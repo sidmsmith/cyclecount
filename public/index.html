@@ -6,6 +6,7 @@
   <title>Cycle Count v1.0.0</title>
   <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css" crossorigin="anonymous" referrerpolicy="no-referrer" />
+  <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
   <style>
     :root {
       --bg-dark: #121212;
@@ -275,10 +276,37 @@
     <!-- MAIN CONTENT (Hidden until authenticated) -->
     <!-- ============================================================================= -->
     <div id="mainContent" style="display: none;">
-    <div class="section-frame">
-        <div class="section-title">Welcome</div>
-        <p>You are successfully authenticated!</p>
+      <div class="section-frame">
+        <div class="section-title">Cycle Count File</div>
+        <div style="display: flex; gap: 0.5rem; align-items: center;">
+          <div style="flex: 1; position: relative;">
+            <input type="file" id="cycle_count_file" class="form-control" accept=".csv,.xls,.xlsx,.txt" style="display:none;" />
+            <input type="text" id="cycle_count_file_display" class="form-control" placeholder="Load a CSV/Excel/TXT file" style="padding-right: 200px; text-overflow: ellipsis; overflow: hidden; white-space: nowrap; background-color: rgba(255, 0, 0, 0.1); border-color: rgba(255, 0, 0, 0.3);" readonly />
+            <span id="cycleCountFileStatus" style="position: absolute; right: 8px; top: 50%; transform: translateY(-50%); color: var(--success); font-size: 0.85em; pointer-events: none; white-space: nowrap;"></span>
+          </div>
+          <button class="btn btn-secondary btn-sm" id="cycleCountFileLoadBtn" type="button">Load</button>
         </div>
+      </div>
+
+      <!-- Console Toggle Button -->
+      <div class="text-center mt-3" id="consoleToggleContainer">
+        <button class="btn btn-sm btn-outline-secondary" id="consoleToggleBtn" type="button" title="Toggle Console">
+          <i class="fas fa-terminal" id="consoleToggleIcon"></i> Console
+        </button>
+      </div>
+
+      <!-- Console Window -->
+      <div id="consoleSection" class="mt-4" style="display:none;">
+        <div class="section-frame">
+          <div class="d-flex justify-content-between align-items-center mb-2">
+            <div class="section-title">Console</div>
+            <button class="btn btn-sm btn-outline-secondary" id="consoleCloseBtn" type="button" title="Hide Console">
+              <i class="fas fa-times"></i>
+            </button>
+          </div>
+          <div class="console-output" id="console"></div>
+        </div>
+      </div>
     </div>
   </div>
 
@@ -304,11 +332,219 @@
     let sessionOrg = null; // ORG stored in session (resets on refresh)
     let sessionToken = null; // Token stored in session (resets on refresh)
     let isAuthenticated = false; // Track authentication status
-    // Simple console logging function
+    
+    // Cycle Count file data
+    let cycleCountFileData = null; // Store parsed cycle count file data
+    let cycleCountFileHeader = null; // Store cycle count file header row
+    
+    // File section elements
+    const cycleCountFileInput = document.getElementById('cycle_count_file');
+    const cycleCountFileDisplay = document.getElementById('cycle_count_file_display');
+    const cycleCountFileLoadBtn = document.getElementById('cycleCountFileLoadBtn');
+    const cycleCountFileStatus = document.getElementById('cycleCountFileStatus');
+    const consoleSection = document.getElementById('consoleSection');
+    const consoleEl = document.getElementById('console');
+    const consoleToggleBtn = document.getElementById('consoleToggleBtn');
+    const consoleCloseBtn = document.getElementById('consoleCloseBtn');
+    
+    // Console logging function
     function logToConsole(message, type = 'info') {
       const timestamp = new Date().toLocaleTimeString();
-      const prefix = `[${timestamp}]`;
-      console.log(`${prefix} ${message}`);
+      const className = type === 'error' ? 'error' : type === 'success' ? 'success' : type === 'warning' ? 'warning' : 'info';
+      if (consoleEl) {
+        consoleEl.innerHTML += `<span class="${className}">[${timestamp}] ${message}</span>\n`;
+        consoleEl.scrollTop = consoleEl.scrollHeight;
+      }
+      // Also log to browser console
+      console.log(`[${timestamp}] ${message}`);
+    }
+    
+    // Helper function to update red shading on file input textbox
+    function updateFileInputShading(element, isEmpty) {
+      if (!element) return;
+      if (isEmpty || !element.value || element.value.trim() === '') {
+        // Apply red shading when empty
+        element.style.setProperty('background-color', 'rgba(255, 0, 0, 0.1)', 'important');
+        element.style.setProperty('border-color', 'rgba(255, 0, 0, 0.3)', 'important');
+      } else {
+        // Remove red shading when has value
+        element.style.setProperty('background-color', '', 'important');
+        element.style.setProperty('border-color', '', 'important');
+      }
+    }
+    
+    // Function to set cycle count file status message
+    function setCycleCountFileStatus(text) {
+      if (cycleCountFileStatus) {
+        cycleCountFileStatus.textContent = text || '';
+      }
+    }
+    
+    // Helper function to check if first cell is a location header (Location, Location ID, LocationId, or Location_id)
+    function isLocationHeaderRow(firstCell) {
+      if (!firstCell) return false;
+      const normalized = String(firstCell).trim().toLowerCase();
+      return normalized === 'location' || normalized === 'location id' || normalized === 'locationid' || normalized === 'location_id';
+    }
+    
+    // Validate cycle count file (checks for Location header and 2 columns)
+    async function validateCycleCountFile(file) {
+      if (!file) {
+        return { valid: false, error: 'No file selected' };
+      }
+
+      const extension = file.name.split('.').pop().toLowerCase();
+      if (!['csv', 'xls', 'xlsx', 'txt'].includes(extension)) {
+        return { valid: false, error: 'File must be a CSV, Excel, or TXT file (.csv, .xls, .xlsx, .txt)' };
+      }
+
+      try {
+        let rows = [];
+        
+        if (extension === 'csv' || extension === 'txt') {
+          const text = await file.text();
+          rows = text.split(/\r?\n/).map(line => {
+            // Parse CSV line (handle quoted values)
+            const result = [];
+            let current = '';
+            let inQuotes = false;
+            for (let i = 0; i < line.length; i++) {
+              const char = line[i];
+              if (char === '"') {
+                inQuotes = !inQuotes;
+              } else if (char === ',' && !inQuotes) {
+                result.push(current.trim());
+                current = '';
+              } else {
+                current += char;
+              }
+            }
+            result.push(current.trim());
+            return result;
+          }).filter(row => row.some(cell => cell.length > 0)); // Filter empty rows
+        } else {
+          // Excel file
+          const buffer = await file.arrayBuffer();
+          const workbook = XLSX.read(buffer, { type: 'array' });
+          const sheetName = workbook.SheetNames[0];
+          const sheet = workbook.Sheets[sheetName];
+          rows = XLSX.utils.sheet_to_json(sheet, { header: 1, defval: '' });
+          rows = rows.map(row => Array.isArray(row) ? row.map(cell => String(cell || '').trim()) : []);
+          rows = rows.filter(row => row.some(cell => cell.length > 0)); // Filter empty rows
+        }
+
+        if (rows.length === 0) {
+          return { valid: false, error: 'File is empty or contains no data rows' };
+        }
+
+        // Check if first row is a header row (cell A1 contains Location, Location ID, LocationId, or Location_id)
+        const hasHeader = rows.length > 0 && isLocationHeaderRow(rows[0][0]);
+        const rowCount = hasHeader ? rows.length - 1 : rows.length;
+        
+        // Check that rows have at least 2 columns (Location and Quantity)
+        const firstDataRow = hasHeader ? rows[1] : rows[0];
+        if (!firstDataRow || firstDataRow.length < 2) {
+          return { valid: false, error: 'File must have at least 2 columns: Location and Quantity' };
+        }
+
+        return { valid: true, rowCount: rowCount, hasHeader: hasHeader };
+      } catch (error) {
+        return { valid: false, error: `Error reading file: ${error.message}` };
+      }
+    }
+    
+    // Parse cycle count file to get rows (Location and Quantity)
+    async function parseCycleCountFile(file) {
+      const extension = file.name.split('.').pop().toLowerCase();
+      let rows = [];
+      let headerDetected = false;
+      let headerRow = null;
+
+      if (extension === 'csv' || extension === 'txt') {
+        const text = await file.text();
+        const lines = text.split(/\r?\n/);
+        lines.forEach((line, index) => {
+          // Parse CSV line (handle quoted values)
+          const result = [];
+          let current = '';
+          let inQuotes = false;
+          for (let i = 0; i < line.length; i++) {
+            const char = line[i];
+            if (char === '"') {
+              inQuotes = !inQuotes;
+            } else if (char === ',' && !inQuotes) {
+              result.push(current.trim());
+              current = '';
+            } else {
+              current += char;
+            }
+          }
+          result.push(current.trim());
+          
+          // Check if first row is a header row
+          if (index === 0 && result.length > 0 && isLocationHeaderRow(result[0])) {
+            headerDetected = true;
+            headerRow = result; // Store header row
+            return; // Skip header row from data
+          }
+          if (result.some(cell => cell.length > 0)) {
+            rows.push(result);
+          }
+        });
+      } else {
+        // Excel file
+        const buffer = await file.arrayBuffer();
+        const workbook = XLSX.read(buffer, { type: 'array' });
+        const sheetName = workbook.SheetNames[0];
+        const sheet = workbook.Sheets[sheetName];
+        const excelRows = XLSX.utils.sheet_to_json(sheet, { header: 1, defval: '' });
+        excelRows.forEach((row, index) => {
+          const rowArray = Array.isArray(row) ? row.map(cell => String(cell || '').trim()) : [];
+          // Check if first row is a header row
+          if (index === 0 && rowArray.length > 0 && isLocationHeaderRow(rowArray[0])) {
+            headerDetected = true;
+            headerRow = rowArray; // Store header row
+            return; // Skip header row from data
+          }
+          if (rowArray.some(cell => cell.length > 0)) {
+            rows.push(rowArray);
+          }
+        });
+      }
+
+      return { rows, headerDetected, headerRow };
+    }
+    
+    // Function to print file contents to console (including header if present)
+    function printFileContentsToConsole(rows, fileName, fileType = 'CSV', headerRow = null) {
+      if (!consoleEl) return;
+      
+      logToConsole(`\n=== ${fileName} (${fileType}) ===`, 'info');
+      
+      // Count data rows (excluding header)
+      const dataRowCount = headerRow ? rows.length : rows.length;
+      logToConsole(`Total rows: ${dataRowCount}`, 'info');
+      
+      if (headerRow) {
+        logToConsole('---', 'info');
+        const headerStr = Array.isArray(headerRow) ? headerRow.join(', ') : String(headerRow);
+        logToConsole(`Header: ${headerStr}`, 'info');
+      }
+      
+      logToConsole('---', 'info');
+      
+      // Print first 50 rows to avoid overwhelming the console
+      const maxRows = Math.min(50, rows.length);
+      for (let i = 0; i < maxRows; i++) {
+        const row = rows[i];
+        const rowStr = Array.isArray(row) ? row.join(', ') : String(row);
+        logToConsole(`Row ${i + 1}: ${rowStr}`, 'info');
+      }
+      
+      if (rows.length > maxRows) {
+        logToConsole(`... (${rows.length - maxRows} more rows)`, 'info');
+      }
+      logToConsole('=== End of file ===\n', 'info');
     }
 
     // API call function
@@ -567,6 +803,130 @@
           }
         });
       }
+      
+      // Cycle Count file picker button
+      if (cycleCountFileLoadBtn && cycleCountFileInput) {
+        cycleCountFileLoadBtn.addEventListener('click', () => {
+          cycleCountFileInput.click();
+        });
+      }
+      
+      // Cycle Count file change handler
+      if (cycleCountFileInput) {
+        cycleCountFileInput.addEventListener('change', async (e) => {
+          if (!e.target.files.length) {
+            cycleCountFileData = null;
+            cycleCountFileHeader = null;
+            setCycleCountFileStatus('');
+            if (cycleCountFileDisplay) {
+              cycleCountFileDisplay.value = '';
+              updateFileInputShading(cycleCountFileDisplay, true);
+            }
+            return;
+          }
+          
+          const file = e.target.files[0];
+          const fileName = file.name;
+          
+          // Validate file format before loading
+          const validation = await validateCycleCountFile(file);
+          
+          if (!validation.valid) {
+            // Show error message
+            setCycleCountFileStatus('');
+            
+            if (cycleCountFileDisplay) {
+              cycleCountFileDisplay.value = '';
+              cycleCountFileDisplay.removeAttribute('title');
+              // Restore red shading to indicate file needs to be loaded
+              updateFileInputShading(cycleCountFileDisplay, true);
+            }
+            
+            // Clear cycle count file data
+            cycleCountFileData = null;
+            cycleCountFileHeader = null;
+            e.target.value = '';
+            alert(`Invalid file format: ${validation.error}`);
+            return;
+          }
+          
+          // File is valid, parse and store data
+          try {
+            const parseResult = await parseCycleCountFile(file);
+            cycleCountFileData = parseResult.rows;
+            cycleCountFileHeader = parseResult.headerRow || null;
+            const headerDetected = parseResult.headerDetected;
+            
+            // Update display textbox - show only filename
+            if (cycleCountFileDisplay) {
+              cycleCountFileDisplay.value = fileName;
+              cycleCountFileDisplay.title = fileName; // Tooltip shows filename on hover
+              // Remove red shading when file is loaded
+              updateFileInputShading(cycleCountFileDisplay, false);
+            }
+            
+            // Use validation count if available, otherwise use parsed rows count
+            const rowCount = validation.rowCount || cycleCountFileData.length;
+            const statusMessage = rowCount > 0
+              ? headerDetected
+                ? `${rowCount} rows loaded (header row detected and skipped)`
+                : `${rowCount} rows loaded`
+              : 'No data rows detected.';
+            setCycleCountFileStatus(statusMessage);
+            
+            // Log to console
+            if (headerDetected) {
+              logToConsole(`Cycle Count file: Header row detected and skipped (${rowCount} data rows)`, 'info');
+            } else {
+              logToConsole(`Cycle Count file: ${rowCount} rows loaded from file`, 'success');
+            }
+            
+            // Print file contents to console (including header)
+            const extension = file.name.split('.').pop().toLowerCase();
+            const fileType = extension === 'csv' || extension === 'txt' ? (extension === 'txt' ? 'TXT' : 'CSV') : 'Excel';
+            printFileContentsToConsole(cycleCountFileData, fileName, fileType, cycleCountFileHeader);
+            
+            // Clear the file input value so the same file can be reloaded
+            e.target.value = '';
+          } catch (error) {
+            // File parsing failed - show error and restore red shading
+            setCycleCountFileStatus('');
+            
+            if (cycleCountFileDisplay) {
+              cycleCountFileDisplay.value = '';
+              cycleCountFileDisplay.removeAttribute('title');
+              // Restore red shading to indicate file needs to be loaded
+              updateFileInputShading(cycleCountFileDisplay, true);
+            }
+            
+            // Clear cycle count file data
+            cycleCountFileData = null;
+            cycleCountFileHeader = null;
+            e.target.value = '';
+            const errorMsg = error.message || 'Failed to parse file. Please ensure the file is a valid CSV, Excel, or TXT file.';
+            alert(`Error loading file: ${errorMsg}`);
+          }
+        });
+      }
+      
+      // Console toggle button
+      if (consoleToggleBtn) {
+        consoleToggleBtn.addEventListener('click', () => {
+          if (consoleSection) {
+            const isHidden = consoleSection.style.display === 'none' || !consoleSection.style.display;
+            consoleSection.style.display = isHidden ? 'block' : 'none';
+          }
+        });
+      }
+      
+      // Console close button
+      if (consoleCloseBtn) {
+        consoleCloseBtn.addEventListener('click', () => {
+          if (consoleSection) {
+            consoleSection.style.display = 'none';
+          }
+        });
+      }
     }
 
     window.addEventListener('DOMContentLoaded', () => {
@@ -580,6 +940,11 @@
       
       // Register event handlers
       registerEventHandlers();
+      
+      // Initialize file input shading on load
+      if (cycleCountFileDisplay) {
+        updateFileInputShading(cycleCountFileDisplay, true);
+      }
       
       // Initialize UI state
       updateAuthUI();
