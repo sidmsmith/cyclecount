@@ -65,6 +65,62 @@ def auth():
         return jsonify({"success": True, "token": token})
     return jsonify({"success": False, "error": "Auth failed"})
 
+@app.route('/api/initiateCount', methods=['POST'])
+def initiate_count():
+    """Initiate cycle count for a location"""
+    data = request.json
+    org = data.get('org', '').strip()
+    token = data.get('token', '').strip()
+    payload = data.get('payload')
+    
+    if not org or not token:
+        return jsonify({"success": False, "error": "ORG and token required"})
+    
+    if not payload:
+        return jsonify({"success": False, "error": "Payload required"})
+    
+    # Extract FacilityId from ORG
+    facility_id = f"{org.upper()}-DM1"
+    url = f"https://{API_HOST}/inventory-management/api/inventory-management/count/initiateCount"
+    headers = {
+        "Authorization": f"Bearer {token}",
+        "Content-Type": "application/json",
+        "FacilityId": facility_id,
+        "selectedOrganization": org.upper(),
+        "selectedLocation": facility_id
+    }
+    
+    try:
+        r = requests.post(url, json=payload, headers=headers, timeout=60, verify=False)
+        
+        if r.status_code not in (200, 201):
+            error_msg = f"API {r.status_code}: {r.text[:500]}"
+            print(f"[INITIATE_COUNT] Error: {error_msg}")
+            return jsonify({
+                "success": False,
+                "error": error_msg,
+                "response": r.text[:500] if r.text else None
+            })
+        
+        try:
+            response_data = r.json()
+        except:
+            response_data = {"raw_response": r.text[:500]}
+        
+        print(f"[INITIATE_COUNT] Success for Location: {payload.get('LocationId', 'unknown')}")
+        return jsonify({
+            "success": True,
+            "response": response_data
+        })
+        
+    except Exception as e:
+        error_msg = f"Exception: {str(e)}"
+        print(f"[INITIATE_COUNT] {error_msg}")
+        return jsonify({
+            "success": False,
+            "error": error_msg
+        })
+
 # Vercel Python automatically detects the Flask app instance
 
 

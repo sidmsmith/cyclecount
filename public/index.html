@@ -292,6 +292,12 @@
           <label class="form-label" style="font-size: 0.9em; margin-bottom: 0.5rem;">File Preview:</label>
           <div id="filePreview" style="background: var(--input-bg); border: 1px solid var(--border); border-radius: 8px; padding: 0.5rem; height: 168px; overflow-y: auto; font-family: 'Courier New', monospace; font-size: 0.85em; white-space: pre; word-wrap: break-word; color: var(--text); line-height: 1.4;"></div>
         </div>
+        
+        <!-- Upload Button -->
+        <div class="text-center mt-3" id="uploadButtonSection" style="display: none;">
+          <button class="btn btn-success" id="uploadCycleCountsBtn" type="button">Upload Cycle Counts</button>
+          <span id="uploadStatus" class="text-muted" style="font-size: 0.9em; margin-left: 1rem;"></span>
+        </div>
       </div>
 
       <!-- Console Toggle Button -->
@@ -612,9 +618,13 @@
       try {
         logToConsole(`[API] Calling ${endpoint}...`, 'info');
         const url = `/api/${endpoint}`;
+        const headers = { 'Content-Type': 'application/json' };
+        if (sessionToken) {
+          headers['Authorization'] = `Bearer ${sessionToken}`;
+        }
         const requestOptions = {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers: headers,
           body: JSON.stringify(data)
         };
         const response = await fetch(url, requestOptions);
@@ -632,6 +642,131 @@
       } catch (error) {
         logToConsole(`[API] ${endpoint} exception: ${error.message}`, 'error');
         return { success: false, error: error.message };
+      }
+    }
+    
+    // Upload Cycle Counts function
+    async function uploadCycleCounts() {
+      if (!cycleCountFileData || cycleCountFileData.length === 0) {
+        alert('Please load a cycle count file first.');
+        return;
+      }
+      
+      if (!isAuthenticated || !sessionToken) {
+        alert('Please authenticate first.');
+        return;
+      }
+      
+      if (!sessionOrg) {
+        alert('Organization is required.');
+        return;
+      }
+      
+      const uploadBtn = document.getElementById('uploadCycleCountsBtn');
+      const uploadStatus = document.getElementById('uploadStatus');
+      
+      // Disable button during upload
+      if (uploadBtn) {
+        uploadBtn.disabled = true;
+        uploadBtn.textContent = 'Uploading...';
+      }
+      if (uploadStatus) {
+        uploadStatus.textContent = '';
+      }
+      
+      let successCount = 0;
+      let failCount = 0;
+      const errors = [];
+      
+      logToConsole(`\n=== Starting Cycle Count Upload ===`, 'info');
+      logToConsole(`Total rows to process: ${cycleCountFileData.length}`, 'info');
+      
+      // Process each row sequentially
+      for (let i = 0; i < cycleCountFileData.length; i++) {
+        const row = cycleCountFileData[i];
+        const locationId = row && row.length > 0 ? String(row[0]).trim() : '';
+        const quantity = row && row.length > 1 ? String(row[1]).trim() : '';
+        
+        if (!locationId) {
+          logToConsole(`Row ${i + 1}: Skipped - missing LocationId`, 'warning');
+          failCount++;
+          errors.push(`Row ${i + 1}: Missing LocationId`);
+          continue;
+        }
+        
+        // Build payload
+        const payload = {
+          "LocationId": locationId,
+          "CountMode": "USER_DIRECTED",
+          "CountSequence": 1,
+          "LpnTracking": false,
+          "CountCriteriaId": "CycleCountActiveDeferred",
+          "TransactionId": "Cycle Count Active",
+          "TaskIntegrationDTO": {
+            "TransactionId": "Cycle Count Active",
+            "TransactionTypeId": "Cycle Count",
+            "LaborActivityId": "Cycle Count"
+          }
+        };
+        
+        // Log API call payload
+        logToConsole(`\n=== Row ${i + 1} (Location: ${locationId}) ===`, 'info');
+        logToConsole(`API Call: initiateCount`, 'info');
+        logToConsole(`Endpoint: /inventory-management/api/inventory-management/count/initiateCount`, 'info');
+        logToConsole(`Request Payload:`, 'info');
+        logToConsole(JSON.stringify(payload, null, 2), 'info');
+        
+        try {
+          const result = await apiCall('initiateCount', {
+            org: sessionOrg,
+            token: sessionToken,
+            payload: payload
+          });
+          
+          // Log full response
+          logToConsole(`Response:`, result.success ? 'success' : 'error');
+          logToConsole(JSON.stringify(result, null, 2), result.success ? 'success' : 'error');
+          
+          if (result.success) {
+            successCount++;
+            logToConsole(`Row ${i + 1}: Successfully initiated count for Location ${locationId}`, 'success');
+          } else {
+            failCount++;
+            const errorMsg = result.error || 'Unknown error';
+            errors.push(`Row ${i + 1} (${locationId}): ${errorMsg}`);
+            logToConsole(`Row ${i + 1}: Failed to initiate count for Location ${locationId}: ${errorMsg}`, 'error');
+          }
+        } catch (error) {
+          failCount++;
+          const errorMsg = error.message || 'Exception occurred';
+          errors.push(`Row ${i + 1} (${locationId}): ${errorMsg}`);
+          logToConsole(`Row ${i + 1}: Error - ${errorMsg}`, 'error');
+        }
+      }
+      
+      // Summary
+      logToConsole(`\n=== Upload Complete ===`, 'info');
+      logToConsole(`Success: ${successCount}`, 'success');
+      logToConsole(`Failed: ${failCount}`, failCount > 0 ? 'error' : 'info');
+      
+      if (errors.length > 0) {
+        logToConsole(`Errors:`, 'error');
+        errors.forEach(err => logToConsole(`  - ${err}`, 'error'));
+      }
+      
+      // Update UI
+      if (uploadBtn) {
+        uploadBtn.disabled = false;
+        uploadBtn.textContent = 'Upload Cycle Counts';
+      }
+      if (uploadStatus) {
+        if (failCount === 0) {
+          uploadStatus.textContent = `✓ Successfully uploaded ${successCount} cycle count(s)`;
+          uploadStatus.style.color = 'var(--success)';
+        } else {
+          uploadStatus.textContent = `${successCount} succeeded, ${failCount} failed`;
+          uploadStatus.style.color = 'var(--red-text)';
+        }
       }
     }
 
@@ -879,6 +1014,10 @@
             cycleCountFileHeader = null;
             setCycleCountFileStatus('');
             updateFilePreview(null);
+            const uploadButtonSection = document.getElementById('uploadButtonSection');
+            if (uploadButtonSection) {
+              uploadButtonSection.style.display = 'none';
+            }
             if (cycleCountFileDisplay) {
               cycleCountFileDisplay.value = '';
               updateFileInputShading(cycleCountFileDisplay, true);
@@ -907,6 +1046,10 @@
             cycleCountFileData = null;
             cycleCountFileHeader = null;
             updateFilePreview(null);
+            const uploadButtonSection = document.getElementById('uploadButtonSection');
+            if (uploadButtonSection) {
+              uploadButtonSection.style.display = 'none';
+            }
             e.target.value = '';
             alert(`Invalid file format: ${validation.error}`);
             return;
@@ -946,6 +1089,12 @@
             // Update file preview window
             updateFilePreview(cycleCountFileData, cycleCountFileHeader);
             
+            // Show upload button if file is loaded
+            const uploadButtonSection = document.getElementById('uploadButtonSection');
+            if (uploadButtonSection) {
+              uploadButtonSection.style.display = 'block';
+            }
+            
             // Print file contents to console (including header)
             const extension = file.name.split('.').pop().toLowerCase();
             const fileType = extension === 'csv' || extension === 'txt' ? (extension === 'txt' ? 'TXT' : 'CSV') : 'Excel';
@@ -968,11 +1117,21 @@
             cycleCountFileData = null;
             cycleCountFileHeader = null;
             updateFilePreview(null);
+            const uploadButtonSection = document.getElementById('uploadButtonSection');
+            if (uploadButtonSection) {
+              uploadButtonSection.style.display = 'none';
+            }
             e.target.value = '';
             const errorMsg = error.message || 'Failed to parse file. Please ensure the file is a valid CSV, Excel, or TXT file.';
             alert(`Error loading file: ${errorMsg}`);
           }
         });
+      }
+      
+      // Upload Cycle Counts button handler
+      const uploadCycleCountsBtn = document.getElementById('uploadCycleCountsBtn');
+      if (uploadCycleCountsBtn) {
+        uploadCycleCountsBtn.addEventListener('click', uploadCycleCounts);
       }
       
       // Console toggle button
