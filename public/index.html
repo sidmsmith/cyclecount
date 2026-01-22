@@ -290,7 +290,7 @@
         <!-- File Preview Window -->
         <div id="filePreviewSection" style="display: none; margin-top: 1rem;">
           <label class="form-label" style="font-size: 0.9em; margin-bottom: 0.5rem;">File Preview:</label>
-          <div id="filePreview" style="background: var(--input-bg); border: 1px solid var(--border); border-radius: 8px; padding: 0.5rem; height: 105px; overflow-y: auto; font-family: 'Courier New', monospace; font-size: 0.85em; white-space: pre; word-wrap: break-word; color: var(--text); line-height: 1.4;"></div>
+          <div id="filePreview" style="background: var(--input-bg); border: 1px solid var(--border); border-radius: 8px; padding: 0.5rem; height: 168px; overflow-y: auto; font-family: 'Courier New', monospace; font-size: 0.85em; white-space: pre; word-wrap: break-word; color: var(--text); line-height: 1.4;"></div>
         </div>
       </div>
 
@@ -333,6 +333,16 @@
 
   <script>
     const APP_VERSION = 'v1.0.0';
+    
+    // URL Parameters for cross-app integration
+    const urlParams = new URLSearchParams(window.location.search);
+    const organizationParam = urlParams.get('Organization');
+    const orgParam = urlParams.get('ORG'); // Also support ORG parameter
+    const consoleParam = urlParams.get('Console');
+    
+    // Store URL parameters for use
+    const urlOrg = organizationParam || orgParam || null; // Support both Organization and ORG
+    const urlConsole = consoleParam || null;
     
     // Authentication state
     let sessionOrg = null; // ORG stored in session (resets on refresh)
@@ -1006,9 +1016,6 @@
       updateAuthUI();
       
       // Check for Organization parameter in URL and auto-authenticate
-      const urlParams = new URLSearchParams(window.location.search);
-      const urlOrg = urlParams.get('Organization');
-      
       if (urlOrg && urlOrg.trim()) {
         logToConsole(`Organization parameter detected in URL: ${urlOrg.trim()}. Auto-authenticating...`, 'info');
         
@@ -1030,6 +1037,14 @@
             }
           }
         });
+      }
+      
+      // Check for Console parameter and show console if Console=Y
+      if (urlConsole && urlConsole.toUpperCase() === 'Y') {
+        if (consoleSection) {
+          consoleSection.style.display = 'block';
+          logToConsole('Console window opened via URL parameter (Console=Y)', 'info');
+        }
       }
     });
   </script>
