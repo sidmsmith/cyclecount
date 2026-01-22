@@ -17,10 +17,9 @@ PASSWORD = os.getenv("MANHATTAN_PASSWORD")
 CLIENT_ID = "omnicomponent.1.0.0"
 CLIENT_SECRET = os.getenv("MANHATTAN_SECRET")
 
-# Critical: Fail fast if secrets missing (only check when needed, not at import)
-def check_env_vars():
-    if not PASSWORD or not CLIENT_SECRET:
-        raise Exception("Missing MANHATTAN_PASSWORD or MANHATTAN_SECRET environment variables")
+# Critical: Fail fast if secrets missing
+if not PASSWORD or not CLIENT_SECRET:
+    raise Exception("Missing MANHATTAN_PASSWORD or MANHATTAN_SECRET environment variables")
 
 # =============================================================================
 # HELPER FUNCTIONS
@@ -28,23 +27,27 @@ def check_env_vars():
 
 def get_manhattan_token(org):
     """Get Manhattan WMS authentication token"""
-    check_env_vars()  # Check env vars when actually needed
     url = f"https://{AUTH_HOST}/oauth/token"
     username = f"{USERNAME_BASE}{org.lower()}"
     data = {
         "grant_type": "password",
         "username": username,
-        "password": PASSWORD
+        "password": PASSWORD,
     }
-    headers = {"Content-Type": "application/x-www-form-urlencoded"}
     auth = HTTPBasicAuth(CLIENT_ID, CLIENT_SECRET)
     try:
-        r = requests.post(url, data=data, headers=headers, auth=auth, timeout=60, verify=False)
-        if r.status_code == 200:
-            return r.json().get("access_token")
-    except Exception as e:
-        print(f"[AUTH] Error: {e}")
-    return None
+        r = requests.post(
+            url,
+            data=data,
+            headers={"Content-Type": "application/x-www-form-urlencoded"},
+            auth=auth,
+            timeout=30,
+            verify=False,
+        )
+        r.raise_for_status()
+        return r.json().get("access_token")
+    except:
+        return None
 
 
 # =============================================================================
@@ -57,14 +60,9 @@ def auth():
     org = request.json.get('org', '').strip()
     if not org:
         return jsonify({"success": False, "error": "ORG required"})
-    
-    print(f"[AUTH] Authenticating for ORG: {org}")
     token = get_manhattan_token(org)
     if token:
-        print(f"[AUTH] Success for ORG: {org}")
         return jsonify({"success": True, "token": token})
-    
-    print(f"[AUTH] Failed for ORG: {org}")
     return jsonify({"success": False, "error": "Auth failed"})
 
 # Vercel Python automatically detects the Flask app instance
