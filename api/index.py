@@ -9,19 +9,17 @@ urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
 app = Flask(__name__)
 
-# =============================================================================
-# ENVIRONMENT VARIABLES
-# =============================================================================
-MANHATTAN_PASSWORD = os.getenv("MANHATTAN_PASSWORD")
-MANHATTAN_SECRET = os.getenv("MANHATTAN_SECRET")
-
-# =============================================================================
-# CONFIGURATION
-# =============================================================================
+# === SECURE CONFIG (from Vercel Environment Variables) ===
 AUTH_HOST = "salep-auth.sce.manh.com"
 API_HOST = "salep.sce.manh.com"
 USERNAME_BASE = "sdtadmin@"
+PASSWORD = os.getenv("MANHATTAN_PASSWORD")
 CLIENT_ID = "omnicomponent.1.0.0"
+CLIENT_SECRET = os.getenv("MANHATTAN_SECRET")
+
+# Critical: Fail fast if secrets missing
+if not PASSWORD or not CLIENT_SECRET:
+    raise Exception("Missing MANHATTAN_PASSWORD or MANHATTAN_SECRET environment variables")
 
 # =============================================================================
 # HELPER FUNCTIONS
@@ -29,18 +27,15 @@ CLIENT_ID = "omnicomponent.1.0.0"
 
 def get_manhattan_token(org):
     """Get Manhattan WMS authentication token"""
-    if not MANHATTAN_PASSWORD or not MANHATTAN_SECRET:
-        return None
-    
     url = f"https://{AUTH_HOST}/oauth/token"
     username = f"{USERNAME_BASE}{org.lower()}"
     data = {
         "grant_type": "password",
         "username": username,
-        "password": MANHATTAN_PASSWORD
+        "password": PASSWORD
     }
     headers = {"Content-Type": "application/x-www-form-urlencoded"}
-    auth = HTTPBasicAuth(CLIENT_ID, MANHATTAN_SECRET)
+    auth = HTTPBasicAuth(CLIENT_ID, CLIENT_SECRET)
     try:
         r = requests.post(url, data=data, headers=headers, auth=auth, timeout=60, verify=False)
         if r.status_code == 200:
@@ -49,11 +44,6 @@ def get_manhattan_token(org):
         print(f"[AUTH] Error: {e}")
     return None
 
-def log_to_console(message, prefix="[API]"):
-    """Log message for console output"""
-    from datetime import datetime
-    timestamp = datetime.now().strftime("%H:%M:%S")
-    print(f"{timestamp} {prefix} {message}")
 
 # =============================================================================
 # API ROUTES
@@ -66,14 +56,14 @@ def auth():
     if not org:
         return jsonify({"success": False, "error": "ORG required"})
     
-    log_to_console(f"Authenticating for ORG: {org}")
+    print(f"[AUTH] Authenticating for ORG: {org}")
     token = get_manhattan_token(org)
     if token:
-        log_to_console(f"Auth success for ORG: {org}")
+        print(f"[AUTH] Success for ORG: {org}")
         return jsonify({"success": True, "token": token})
     
-    log_to_console(f"Auth failed for ORG: {org}")
-    return jsonify({"success": False, "error": "Authentication failed"})
+    print(f"[AUTH] Failed for ORG: {org}")
+    return jsonify({"success": False, "error": "Auth failed"})
 
 # =============================================================================
 # VERCEL HANDLER
