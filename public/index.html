@@ -286,6 +286,12 @@
           </div>
           <button class="btn btn-secondary btn-sm" id="cycleCountFileLoadBtn" type="button">Load</button>
         </div>
+        
+        <!-- File Preview Window -->
+        <div id="filePreviewSection" style="display: none; margin-top: 1rem;">
+          <label class="form-label" style="font-size: 0.9em; margin-bottom: 0.5rem;">File Preview:</label>
+          <div id="filePreview" style="background: var(--input-bg); border: 1px solid var(--border); border-radius: 8px; padding: 0.5rem; height: 105px; overflow-y: auto; font-family: 'Courier New', monospace; font-size: 0.85em; white-space: pre; word-wrap: break-word; color: var(--text); line-height: 1.4;"></div>
+        </div>
       </div>
 
       <!-- Console Toggle Button -->
@@ -342,6 +348,8 @@
     const cycleCountFileDisplay = document.getElementById('cycle_count_file_display');
     const cycleCountFileLoadBtn = document.getElementById('cycleCountFileLoadBtn');
     const cycleCountFileStatus = document.getElementById('cycleCountFileStatus');
+    const filePreviewSection = document.getElementById('filePreviewSection');
+    const filePreview = document.getElementById('filePreview');
     const consoleSection = document.getElementById('consoleSection');
     const consoleEl = document.getElementById('console');
     const consoleToggleBtn = document.getElementById('consoleToggleBtn');
@@ -404,23 +412,29 @@
         if (extension === 'csv' || extension === 'txt') {
           const text = await file.text();
           rows = text.split(/\r?\n/).map(line => {
-            // Parse CSV line (handle quoted values)
-            const result = [];
-            let current = '';
-            let inQuotes = false;
-            for (let i = 0; i < line.length; i++) {
-              const char = line[i];
-              if (char === '"') {
-                inQuotes = !inQuotes;
-              } else if (char === ',' && !inQuotes) {
-                result.push(current.trim());
-                current = '';
-              } else {
-                current += char;
+            // For TXT files, use space as separator; for CSV, use comma
+            if (extension === 'txt') {
+              // Split by whitespace (one or more spaces/tabs)
+              return line.trim().split(/\s+/).filter(cell => cell.length > 0);
+            } else {
+              // Parse CSV line (handle quoted values)
+              const result = [];
+              let current = '';
+              let inQuotes = false;
+              for (let i = 0; i < line.length; i++) {
+                const char = line[i];
+                if (char === '"') {
+                  inQuotes = !inQuotes;
+                } else if (char === ',' && !inQuotes) {
+                  result.push(current.trim());
+                  current = '';
+                } else {
+                  current += char;
+                }
               }
+              result.push(current.trim());
+              return result;
             }
-            result.push(current.trim());
-            return result;
           }).filter(row => row.some(cell => cell.length > 0)); // Filter empty rows
         } else {
           // Excel file
@@ -464,22 +478,29 @@
         const text = await file.text();
         const lines = text.split(/\r?\n/);
         lines.forEach((line, index) => {
-          // Parse CSV line (handle quoted values)
-          const result = [];
-          let current = '';
-          let inQuotes = false;
-          for (let i = 0; i < line.length; i++) {
-            const char = line[i];
-            if (char === '"') {
-              inQuotes = !inQuotes;
-            } else if (char === ',' && !inQuotes) {
-              result.push(current.trim());
-              current = '';
-            } else {
-              current += char;
+          let result = [];
+          
+          // For TXT files, use space as separator; for CSV, use comma
+          if (extension === 'txt') {
+            // Split by whitespace (one or more spaces/tabs)
+            result = line.trim().split(/\s+/).filter(cell => cell.length > 0);
+          } else {
+            // Parse CSV line (handle quoted values)
+            let current = '';
+            let inQuotes = false;
+            for (let i = 0; i < line.length; i++) {
+              const char = line[i];
+              if (char === '"') {
+                inQuotes = !inQuotes;
+              } else if (char === ',' && !inQuotes) {
+                result.push(current.trim());
+                current = '';
+              } else {
+                current += char;
+              }
             }
+            result.push(current.trim());
           }
-          result.push(current.trim());
           
           // Check if first row is a header row
           if (index === 0 && result.length > 0 && isLocationHeaderRow(result[0])) {
@@ -513,6 +534,35 @@
       }
 
       return { rows, headerDetected, headerRow };
+    }
+    
+    // Function to update file preview window (shows 5 rows max with scrollbar)
+    function updateFilePreview(rows, headerRow = null) {
+      if (!filePreview || !filePreviewSection) return;
+      
+      if (!rows || rows.length === 0) {
+        filePreviewSection.style.display = 'none';
+        return;
+      }
+      
+      filePreviewSection.style.display = 'block';
+      
+      let previewText = '';
+      
+      // Add header if present
+      if (headerRow) {
+        const headerStr = Array.isArray(headerRow) ? headerRow.join('  ') : String(headerRow);
+        previewText += headerStr + '\n';
+        previewText += '─'.repeat(headerStr.length) + '\n';
+      }
+      
+      // Show all rows (scrollbar will appear if more than 5 rows)
+      rows.forEach((row, index) => {
+        const rowStr = Array.isArray(row) ? row.join('  ') : String(row);
+        previewText += rowStr + '\n';
+      });
+      
+      filePreview.textContent = previewText;
     }
     
     // Function to print file contents to console (including header if present)
@@ -818,6 +868,7 @@
             cycleCountFileData = null;
             cycleCountFileHeader = null;
             setCycleCountFileStatus('');
+            updateFilePreview(null);
             if (cycleCountFileDisplay) {
               cycleCountFileDisplay.value = '';
               updateFileInputShading(cycleCountFileDisplay, true);
@@ -845,6 +896,7 @@
             // Clear cycle count file data
             cycleCountFileData = null;
             cycleCountFileHeader = null;
+            updateFilePreview(null);
             e.target.value = '';
             alert(`Invalid file format: ${validation.error}`);
             return;
@@ -881,6 +933,9 @@
               logToConsole(`Cycle Count file: ${rowCount} rows loaded from file`, 'success');
             }
             
+            // Update file preview window
+            updateFilePreview(cycleCountFileData, cycleCountFileHeader);
+            
             // Print file contents to console (including header)
             const extension = file.name.split('.').pop().toLowerCase();
             const fileType = extension === 'csv' || extension === 'txt' ? (extension === 'txt' ? 'TXT' : 'CSV') : 'Excel';
@@ -902,6 +957,7 @@
             // Clear cycle count file data
             cycleCountFileData = null;
             cycleCountFileHeader = null;
+            updateFilePreview(null);
             e.target.value = '';
             const errorMsg = error.message || 'Failed to parse file. Please ensure the file is a valid CSV, Excel, or TXT file.';
             alert(`Error loading file: ${errorMsg}`);
