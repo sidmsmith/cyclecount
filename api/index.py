@@ -121,6 +121,91 @@ def initiate_count():
             "error": error_msg
         })
 
+@app.route('/api/getInventory', methods=['POST'])
+def get_inventory():
+    """Get inventory ItemId for a location"""
+    data = request.json
+    org = data.get('org', '').strip()
+    token = data.get('token', '').strip()
+    locationId = data.get('locationId', '').strip()
+    
+    if not org or not token:
+        return jsonify({"success": False, "error": "ORG and token required"})
+    
+    if not locationId:
+        return jsonify({"success": False, "error": "LocationId required"})
+    
+    # Extract FacilityId from ORG
+    facility_id = f"{org.upper()}-DM1"
+    url = f"https://{API_HOST}/dcinventory/api/dcinventory/inventory"
+    params = {
+        "query": f'LocationId="{locationId}"'
+    }
+    headers = {
+        "Authorization": f"Bearer {token}",
+        "Content-Type": "application/json",
+        "FacilityId": facility_id,
+        "selectedOrganization": org.upper(),
+        "selectedLocation": facility_id
+    }
+    
+    try:
+        r = requests.get(url, params=params, headers=headers, timeout=60, verify=False)
+        
+        if r.status_code not in (200, 201):
+            error_msg = f"API {r.status_code}: {r.text[:500]}"
+            print(f"[GET_INVENTORY] Error: {error_msg}")
+            return jsonify({
+                "success": False,
+                "error": error_msg,
+                "response": r.text[:500] if r.text else None
+            })
+        
+        try:
+            response_data = r.json()
+        except:
+            response_data = {"raw_response": r.text[:500]}
+        
+        # Extract ItemId from first record if multiple records exist
+        itemId = None
+        if isinstance(response_data, dict):
+            # Check if response has a data array
+            data_list = response_data.get("data") or response_data.get("Data") or []
+            if isinstance(data_list, list) and len(data_list) > 0:
+                first_record = data_list[0]
+                itemId = first_record.get("ItemId") or first_record.get("itemId")
+            # Or if response itself is a record
+            elif "ItemId" in response_data:
+                itemId = response_data.get("ItemId")
+            elif "itemId" in response_data:
+                itemId = response_data.get("itemId")
+        elif isinstance(response_data, list) and len(response_data) > 0:
+            first_record = response_data[0]
+            itemId = first_record.get("ItemId") or first_record.get("itemId")
+        
+        if itemId:
+            print(f"[GET_INVENTORY] Success for Location: {locationId}, ItemId: {itemId}")
+            return jsonify({
+                "success": True,
+                "itemId": itemId,
+                "response": response_data
+            })
+        else:
+            print(f"[GET_INVENTORY] No ItemId found for Location: {locationId}")
+            return jsonify({
+                "success": False,
+                "error": "No ItemId found in response",
+                "response": response_data
+            })
+        
+    except Exception as e:
+        error_msg = f"Exception: {str(e)}"
+        print(f"[GET_INVENTORY] {error_msg}")
+        return jsonify({
+            "success": False,
+            "error": error_msg
+        })
+
 # Vercel Python automatically detects the Flask app instance
 
 

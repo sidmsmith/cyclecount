@@ -295,8 +295,10 @@
         
         <!-- Upload Button -->
         <div class="text-center mt-3" id="uploadButtonSection" style="display: none;">
-          <button class="btn btn-success" id="uploadCycleCountsBtn" type="button">Upload Cycle Counts</button>
-          <span id="uploadStatus" class="text-muted" style="font-size: 0.9em; margin-left: 1rem;"></span>
+          <div style="position: relative;">
+            <button class="btn btn-success" id="uploadCycleCountsBtn" type="button">Upload Cycle Counts</button>
+            <div id="uploadStatus" class="text-muted" style="font-size: 0.9em; margin-top: 0.5rem;"></div>
+          </div>
         </div>
       </div>
 
@@ -728,8 +730,40 @@
           logToConsole(JSON.stringify(result, null, 2), result.success ? 'success' : 'error');
           
           if (result.success) {
-            successCount++;
+            // First API succeeded, now get ItemId for the location
             logToConsole(`Row ${i + 1}: Successfully initiated count for Location ${locationId}`, 'success');
+            
+            // Second API call: Get ItemId for the location
+            logToConsole(`\n=== Row ${i + 1} - Getting ItemId for Location: ${locationId} ===`, 'info');
+            logToConsole(`API Call: getInventory`, 'info');
+            logToConsole(`Endpoint: /dcinventory/api/dcinventory/inventory?query=LocationId="${locationId}"`, 'info');
+            
+            try {
+              const inventoryResult = await apiCall('getInventory', {
+                org: sessionOrg,
+                token: sessionToken,
+                locationId: locationId
+              });
+              
+              // Log full response
+              logToConsole(`Response:`, inventoryResult.success ? 'success' : 'error');
+              logToConsole(JSON.stringify(inventoryResult, null, 2), inventoryResult.success ? 'success' : 'error');
+              
+              if (inventoryResult.success && inventoryResult.itemId) {
+                logToConsole(`Row ${i + 1}: Found ItemId ${inventoryResult.itemId} for Location ${locationId}`, 'success');
+                successCount++;
+              } else {
+                failCount++;
+                const errorMsg = inventoryResult.error || 'Failed to get ItemId';
+                errors.push(`Row ${i + 1} (${locationId}): ${errorMsg}`);
+                logToConsole(`Row ${i + 1}: Failed to get ItemId for Location ${locationId}: ${errorMsg}`, 'error');
+              }
+            } catch (error) {
+              failCount++;
+              const errorMsg = error.message || 'Exception occurred while getting ItemId';
+              errors.push(`Row ${i + 1} (${locationId}): ${errorMsg}`);
+              logToConsole(`Row ${i + 1}: Error getting ItemId - ${errorMsg}`, 'error');
+            }
           } else {
             failCount++;
             const errorMsg = result.error || 'Unknown error';
