@@ -1059,11 +1059,18 @@
       // Update UI
       if (uploadBtn) {
         uploadBtn.disabled = false;
-        uploadBtn.textContent = 'Upload Cycle Counts';
+        // Reset button text based on file data
+        if (cycleCountFileData && cycleCountFileData.length > 0) {
+          const rowCount = cycleCountFileData.length;
+          uploadBtn.textContent = `Upload ${rowCount} Cycle Count${rowCount === 1 ? '' : 's'}`;
+        } else {
+          uploadBtn.textContent = 'Upload Cycle Counts';
+        }
       }
       if (uploadStatus) {
         if (failCount === 0) {
-          uploadStatus.textContent = `✓ Successfully uploaded ${successCount} cycle count(s)`;
+          const countText = successCount === 1 ? 'cycle count' : 'cycle counts';
+          uploadStatus.textContent = `✓ Successfully uploaded ${successCount} ${countText}`;
           uploadStatus.style.color = 'var(--success)';
         } else {
           uploadStatus.textContent = `${successCount} succeeded, ${failCount} failed`;
@@ -1393,8 +1400,14 @@
             
             // Show upload button if file is loaded
             const uploadButtonSection = document.getElementById('uploadButtonSection');
+            const uploadBtn = document.getElementById('uploadCycleCountsBtn');
             if (uploadButtonSection) {
               uploadButtonSection.style.display = 'block';
+            }
+            // Update button text with row count
+            if (uploadBtn && cycleCountFileData) {
+              const rowCount = cycleCountFileData.length;
+              uploadBtn.textContent = `Upload ${rowCount} Cycle Count${rowCount === 1 ? '' : 's'}`;
             }
             
             // Print file contents to console (including header)
