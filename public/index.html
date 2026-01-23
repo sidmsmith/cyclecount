@@ -730,8 +730,9 @@
           logToConsole(JSON.stringify(result, null, 2), result.success ? 'success' : 'error');
           
           if (result.success) {
-            // First API succeeded, extract CountRunId from response
+            // First API succeeded, extract CountRunId and TaskId from response
             let countRunId = null;
+            let taskId = null;
             if (result.response && typeof result.response === 'object') {
               const resp = result.response;
               // Try various possible locations for CountRunId
@@ -748,6 +749,21 @@
               } else if (resp.Data && resp.Data.countRunId) {
                 countRunId = resp.Data.countRunId;
               }
+              
+              // Try various possible locations for TaskId
+              if (resp.TaskId) {
+                taskId = resp.TaskId;
+              } else if (resp.taskId) {
+                taskId = resp.taskId;
+              } else if (resp.data && resp.data.TaskId) {
+                taskId = resp.data.TaskId;
+              } else if (resp.data && resp.data.taskId) {
+                taskId = resp.data.taskId;
+              } else if (resp.Data && resp.Data.TaskId) {
+                taskId = resp.Data.TaskId;
+              } else if (resp.Data && resp.Data.taskId) {
+                taskId = resp.Data.taskId;
+              }
             }
             
             logToConsole(`Row ${i + 1}: Successfully initiated count for Location ${locationId}`, 'success');
@@ -755,6 +771,11 @@
               logToConsole(`Row ${i + 1}: CountRunId extracted: ${countRunId}`, 'info');
             } else {
               logToConsole(`Row ${i + 1}: Warning - CountRunId not found in response`, 'warning');
+            }
+            if (taskId) {
+              logToConsole(`Row ${i + 1}: TaskId extracted: ${taskId}`, 'info');
+            } else {
+              logToConsole(`Row ${i + 1}: Warning - TaskId not found in response`, 'warning');
             }
             
             // Second API call: Get ItemId for the location
@@ -812,7 +833,72 @@
                     
                     if (validateResult.success) {
                       logToConsole(`Row ${i + 1}: Successfully validated item and got item details for Location ${locationId}`, 'success');
-                      successCount++;
+                      
+                      // Fourth API call: Accept Quantity
+                      if (countRunId && taskId) {
+                        logToConsole(`\n=== Row ${i + 1} - Accepting Quantity ===`, 'info');
+                        logToConsole(`API Call: acceptQuantity`, 'info');
+                        logToConsole(`Endpoint: /inventory-management/api/inventory-management/count/acceptQuantity`, 'info');
+                        
+                        const acceptPayload = {
+                          "LocationId": locationId,
+                          "CountRunId": countRunId,
+                          "ContainerType": null,
+                          "ContainerId": null,
+                          "Quantity": quantity ? parseFloat(quantity) : 0,
+                          "BlindIlpn": false,
+                          "TransactionId": "Cycle Count Active",
+                          "TaskId": taskId,
+                          "CriteriaId": "CycleCountActiveDeferred",
+                          "ItemAttributeDTO": {
+                            "Item": itemId,
+                            "CompareAttributes": false
+                          },
+                          "TaskIntegrationDTO": {
+                            "TransactionId": "Cycle Count Active",
+                            "TransactionTypeId": "Cycle Count",
+                            "LaborActivityId": "Cycle Count"
+                          }
+                        };
+                        
+                        logToConsole(`Request Payload:`, 'info');
+                        logToConsole(JSON.stringify(acceptPayload, null, 2), 'info');
+                        
+                        try {
+                          const acceptResult = await apiCall('acceptQuantity', {
+                            org: sessionOrg,
+                            token: sessionToken,
+                            payload: acceptPayload
+                          });
+                          
+                          // Log full response
+                          logToConsole(`Response:`, acceptResult.success ? 'success' : 'error');
+                          logToConsole(JSON.stringify(acceptResult, null, 2), acceptResult.success ? 'success' : 'error');
+                          
+                          if (acceptResult.success) {
+                            logToConsole(`Row ${i + 1}: Successfully accepted quantity ${quantity} for Location ${locationId}`, 'success');
+                            successCount++;
+                          } else {
+                            failCount++;
+                            const errorMsg = acceptResult.error || 'Failed to accept quantity';
+                            errors.push(`Row ${i + 1} (${locationId}): ${errorMsg}`);
+                            logToConsole(`Row ${i + 1}: Failed to accept quantity for Location ${locationId}: ${errorMsg}`, 'error');
+                          }
+                        } catch (error) {
+                          failCount++;
+                          const errorMsg = error.message || 'Exception occurred while accepting quantity';
+                          errors.push(`Row ${i + 1} (${locationId}): ${errorMsg}`);
+                          logToConsole(`Row ${i + 1}: Error accepting quantity - ${errorMsg}`, 'error');
+                        }
+                      } else {
+                        failCount++;
+                        const missingFields = [];
+                        if (!countRunId) missingFields.push('CountRunId');
+                        if (!taskId) missingFields.push('TaskId');
+                        const errorMsg = `Missing required fields: ${missingFields.join(', ')}`;
+                        errors.push(`Row ${i + 1} (${locationId}): ${errorMsg}`);
+                        logToConsole(`Row ${i + 1}: Cannot proceed - ${errorMsg}`, 'error');
+                      }
                     } else {
                       failCount++;
                       const errorMsg = validateResult.error || 'Failed to validate item';
