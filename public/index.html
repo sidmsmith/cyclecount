@@ -835,11 +835,19 @@
                       logToConsole(`Row ${i + 1}: Successfully validated item and got item details for Location ${locationId}`, 'success');
                       
                       // Fourth API call: Accept Quantity
+                      // DISABLED FOR TESTING - Skipping acceptQuantity call
                       if (countRunId && taskId) {
                         logToConsole(`\n=== Row ${i + 1} - Accepting Quantity ===`, 'info');
                         logToConsole(`API Call: acceptQuantity`, 'info');
                         logToConsole(`Endpoint: /inventory-management/api/inventory-management/count/acceptQuantity`, 'info');
+                        logToConsole(`[TESTING] Skipping acceptQuantity API call`, 'warning');
                         
+                        // Simulate success to continue workflow
+                        const acceptResult = { success: true };
+                        logToConsole(`Row ${i + 1}: [TESTING] Skipped acceptQuantity for Location ${locationId}`, 'warning');
+                        
+                        // Original acceptQuantity call - DISABLED FOR TESTING
+                        /*
                         const acceptPayload = {
                           "LocationId": locationId,
                           "CountRunId": countRunId,
@@ -874,10 +882,9 @@
                           // Log full response
                           logToConsole(`Response:`, acceptResult.success ? 'success' : 'error');
                           logToConsole(JSON.stringify(acceptResult, null, 2), acceptResult.success ? 'success' : 'error');
+                          */
                           
                           if (acceptResult.success) {
-                            logToConsole(`Row ${i + 1}: Successfully accepted quantity ${quantity} for Location ${locationId}`, 'success');
-                            
                             // Fifth API call: Persist Count Details
                             logToConsole(`\n=== Row ${i + 1} - Persisting Count Details ===`, 'info');
                             logToConsole(`API Call: persistCountDetails`, 'info');
@@ -987,12 +994,15 @@
                             errors.push(`Row ${i + 1} (${locationId}): ${errorMsg}`);
                             logToConsole(`Row ${i + 1}: Failed to accept quantity for Location ${locationId}: ${errorMsg}`, 'error');
                           }
+                        // DISABLED FOR TESTING - catch block commented out
+                        /*
                         } catch (error) {
                           failCount++;
                           const errorMsg = error.message || 'Exception occurred while accepting quantity';
                           errors.push(`Row ${i + 1} (${locationId}): ${errorMsg}`);
                           logToConsole(`Row ${i + 1}: Error accepting quantity - ${errorMsg}`, 'error');
                         }
+                        */
                       } else {
                         failCount++;
                         const missingFields = [];
