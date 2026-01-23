@@ -730,8 +730,32 @@
           logToConsole(JSON.stringify(result, null, 2), result.success ? 'success' : 'error');
           
           if (result.success) {
-            // First API succeeded, now get ItemId for the location
+            // First API succeeded, extract CountRunId from response
+            let countRunId = null;
+            if (result.response && typeof result.response === 'object') {
+              const resp = result.response;
+              // Try various possible locations for CountRunId
+              if (resp.CountRunId) {
+                countRunId = resp.CountRunId;
+              } else if (resp.countRunId) {
+                countRunId = resp.countRunId;
+              } else if (resp.data && resp.data.CountRunId) {
+                countRunId = resp.data.CountRunId;
+              } else if (resp.data && resp.data.countRunId) {
+                countRunId = resp.data.countRunId;
+              } else if (resp.Data && resp.Data.CountRunId) {
+                countRunId = resp.Data.CountRunId;
+              } else if (resp.Data && resp.Data.countRunId) {
+                countRunId = resp.Data.countRunId;
+              }
+            }
+            
             logToConsole(`Row ${i + 1}: Successfully initiated count for Location ${locationId}`, 'success');
+            if (countRunId) {
+              logToConsole(`Row ${i + 1}: CountRunId extracted: ${countRunId}`, 'info');
+            } else {
+              logToConsole(`Row ${i + 1}: Warning - CountRunId not found in response`, 'warning');
+            }
             
             // Second API call: Get ItemId for the location
             logToConsole(`\n=== Row ${i + 1} - Getting ItemId for Location: ${locationId} ===`, 'info');
@@ -750,8 +774,63 @@
               logToConsole(JSON.stringify(inventoryResult, null, 2), inventoryResult.success ? 'success' : 'error');
               
               if (inventoryResult.success && inventoryResult.itemId) {
-                logToConsole(`Row ${i + 1}: Found ItemId ${inventoryResult.itemId} for Location ${locationId}`, 'success');
-                successCount++;
+                const itemId = inventoryResult.itemId;
+                logToConsole(`Row ${i + 1}: Found ItemId ${itemId} for Location ${locationId}`, 'success');
+                
+                // Third API call: Validate Item and Get Item Details
+                if (countRunId) {
+                  logToConsole(`\n=== Row ${i + 1} - Validating Item and Getting Item Details ===`, 'info');
+                  logToConsole(`API Call: validateItemAndGetItemDetails`, 'info');
+                  logToConsole(`Endpoint: /inventory-management/api/inventory-management/count/validateItemAndGetItemDetails`, 'info');
+                  
+                  const validatePayload = {
+                    "LocationId": locationId,
+                    "CountRunId": countRunId,
+                    "LpnTracking": false,
+                    "ContainerId": null,
+                    "TransactionId": "Cycle Count Active",
+                    "CriteriaId": "Manual Cycle count task generation",
+                    "ItemAttributeDTO": {
+                      "Item": itemId
+                    },
+                    "TransactionTypeId": "Cycle Count"
+                  };
+                  
+                  logToConsole(`Request Payload:`, 'info');
+                  logToConsole(JSON.stringify(validatePayload, null, 2), 'info');
+                  
+                  try {
+                    const validateResult = await apiCall('validateItemAndGetItemDetails', {
+                      org: sessionOrg,
+                      token: sessionToken,
+                      payload: validatePayload
+                    });
+                    
+                    // Log full response
+                    logToConsole(`Response:`, validateResult.success ? 'success' : 'error');
+                    logToConsole(JSON.stringify(validateResult, null, 2), validateResult.success ? 'success' : 'error');
+                    
+                    if (validateResult.success) {
+                      logToConsole(`Row ${i + 1}: Successfully validated item and got item details for Location ${locationId}`, 'success');
+                      successCount++;
+                    } else {
+                      failCount++;
+                      const errorMsg = validateResult.error || 'Failed to validate item';
+                      errors.push(`Row ${i + 1} (${locationId}): ${errorMsg}`);
+                      logToConsole(`Row ${i + 1}: Failed to validate item for Location ${locationId}: ${errorMsg}`, 'error');
+                    }
+                  } catch (error) {
+                    failCount++;
+                    const errorMsg = error.message || 'Exception occurred while validating item';
+                    errors.push(`Row ${i + 1} (${locationId}): ${errorMsg}`);
+                    logToConsole(`Row ${i + 1}: Error validating item - ${errorMsg}`, 'error');
+                  }
+                } else {
+                  failCount++;
+                  const errorMsg = 'CountRunId not found in initiateCount response';
+                  errors.push(`Row ${i + 1} (${locationId}): ${errorMsg}`);
+                  logToConsole(`Row ${i + 1}: Cannot proceed - ${errorMsg}`, 'error');
+                }
               } else {
                 failCount++;
                 const errorMsg = inventoryResult.error || 'Failed to get ItemId';

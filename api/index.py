@@ -121,6 +121,64 @@ def initiate_count():
             "error": error_msg
         })
 
+@app.route('/api/validateItemAndGetItemDetails', methods=['POST'])
+def validate_item_and_get_item_details():
+    """Validate item and get item details for cycle count"""
+    data = request.json
+    org = data.get('org', '').strip()
+    token = data.get('token', '').strip()
+    payload = data.get('payload')
+    
+    if not org or not token:
+        return jsonify({"success": False, "error": "ORG and token required"})
+    
+    if not payload:
+        return jsonify({"success": False, "error": "Payload required"})
+    
+    # Extract FacilityId from ORG
+    facility_id = f"{org.upper()}-DM1"
+    url = f"https://{API_HOST}/inventory-management/api/inventory-management/count/validateItemAndGetItemDetails"
+    headers = {
+        "Authorization": f"Bearer {token}",
+        "Content-Type": "application/json",
+        "FacilityId": facility_id,
+        "selectedOrganization": org.upper(),
+        "selectedLocation": facility_id
+    }
+    
+    try:
+        r = requests.post(url, json=payload, headers=headers, timeout=60, verify=False)
+        
+        if r.status_code not in (200, 201):
+            error_msg = f"API {r.status_code}: {r.text[:500]}"
+            print(f"[VALIDATE_ITEM] Error: {error_msg}")
+            return jsonify({
+                "success": False,
+                "error": error_msg,
+                "response": r.text[:500] if r.text else None
+            })
+        
+        try:
+            response_data = r.json()
+        except:
+            response_data = {"raw_response": r.text[:500]}
+        
+        location_id = payload.get('LocationId', 'unknown')
+        item_id = payload.get('ItemAttributeDTO', {}).get('Item', 'unknown')
+        print(f"[VALIDATE_ITEM] Success for Location: {location_id}, Item: {item_id}")
+        return jsonify({
+            "success": True,
+            "response": response_data
+        })
+        
+    except Exception as e:
+        error_msg = f"Exception: {str(e)}"
+        print(f"[VALIDATE_ITEM] {error_msg}")
+        return jsonify({
+            "success": False,
+            "error": error_msg
+        })
+
 @app.route('/api/getInventory', methods=['POST'])
 def get_inventory():
     """Get inventory ItemId for a location"""
