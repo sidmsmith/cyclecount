@@ -920,7 +920,55 @@
                               
                               if (persistResult.success) {
                                 logToConsole(`Row ${i + 1}: Successfully persisted count details for Location ${locationId}`, 'success');
-                                successCount++;
+                                
+                                // Sixth API call: End Count
+                                logToConsole(`\n=== Row ${i + 1} - Ending Count ===`, 'info');
+                                logToConsole(`API Call: endCount`, 'info');
+                                logToConsole(`Endpoint: /inventory-management/api/inventory-management/count/end`, 'info');
+                                
+                                const endPayload = {
+                                  "LocationId": locationId,
+                                  "CountRunId": countRunId,
+                                  "CountSequence": 1,
+                                  "LpnTracking": false,
+                                  "TransactionId": "Cycle Count Active",
+                                  "CriteriaId": "CycleCountActiveDeferred",
+                                  "TaskIntegrationDTO": {
+                                    "TransactionId": "Cycle Count Active",
+                                    "TransactionTypeId": "Cycle Count",
+                                    "LaborActivityId": "Cycle Count"
+                                  }
+                                };
+                                
+                                logToConsole(`Request Payload:`, 'info');
+                                logToConsole(JSON.stringify(endPayload, null, 2), 'info');
+                                
+                                try {
+                                  const endResult = await apiCall('endCount', {
+                                    org: sessionOrg,
+                                    token: sessionToken,
+                                    payload: endPayload
+                                  });
+                                  
+                                  // Log full response
+                                  logToConsole(`Response:`, endResult.success ? 'success' : 'error');
+                                  logToConsole(JSON.stringify(endResult, null, 2), endResult.success ? 'success' : 'error');
+                                  
+                                  if (endResult.success) {
+                                    logToConsole(`Row ${i + 1}: Successfully ended count for Location ${locationId}`, 'success');
+                                    successCount++;
+                                  } else {
+                                    failCount++;
+                                    const errorMsg = endResult.error || 'Failed to end count';
+                                    errors.push(`Row ${i + 1} (${locationId}): ${errorMsg}`);
+                                    logToConsole(`Row ${i + 1}: Failed to end count for Location ${locationId}: ${errorMsg}`, 'error');
+                                  }
+                                } catch (error) {
+                                  failCount++;
+                                  const errorMsg = error.message || 'Exception occurred while ending count';
+                                  errors.push(`Row ${i + 1} (${locationId}): ${errorMsg}`);
+                                  logToConsole(`Row ${i + 1}: Error ending count - ${errorMsg}`, 'error');
+                                }
                               } else {
                                 failCount++;
                                 const errorMsg = persistResult.error || 'Failed to persist count details';

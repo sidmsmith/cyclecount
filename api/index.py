@@ -297,6 +297,64 @@ def persist_count_details():
             "error": error_msg
         })
 
+@app.route('/api/endCount', methods=['POST'])
+def end_count():
+    """End cycle count"""
+    data = request.json
+    org = data.get('org', '').strip()
+    token = data.get('token', '').strip()
+    payload = data.get('payload')
+    
+    if not org or not token:
+        return jsonify({"success": False, "error": "ORG and token required"})
+    
+    if not payload:
+        return jsonify({"success": False, "error": "Payload required"})
+    
+    # Extract FacilityId from ORG
+    facility_id = f"{org.upper()}-DM1"
+    url = f"https://{API_HOST}/inventory-management/api/inventory-management/count/end"
+    headers = {
+        "Authorization": f"Bearer {token}",
+        "Content-Type": "application/json",
+        "FacilityId": facility_id,
+        "selectedOrganization": org.upper(),
+        "selectedLocation": facility_id
+    }
+    
+    try:
+        r = requests.post(url, json=payload, headers=headers, timeout=60, verify=False)
+        
+        if r.status_code not in (200, 201):
+            error_msg = f"API {r.status_code}: {r.text[:500]}"
+            print(f"[END_COUNT] Error: {error_msg}")
+            return jsonify({
+                "success": False,
+                "error": error_msg,
+                "response": r.text[:500] if r.text else None
+            })
+        
+        try:
+            response_data = r.json()
+        except:
+            response_data = {"raw_response": r.text[:500]}
+        
+        location_id = payload.get('LocationId', 'unknown')
+        count_run_id = payload.get('CountRunId', 'unknown')
+        print(f"[END_COUNT] Success for Location: {location_id}, CountRunId: {count_run_id}")
+        return jsonify({
+            "success": True,
+            "response": response_data
+        })
+        
+    except Exception as e:
+        error_msg = f"Exception: {str(e)}"
+        print(f"[END_COUNT] {error_msg}")
+        return jsonify({
+            "success": False,
+            "error": error_msg
+        })
+
 @app.route('/api/getInventory', methods=['POST'])
 def get_inventory():
     """Get inventory ItemId for a location"""
