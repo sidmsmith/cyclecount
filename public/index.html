@@ -877,7 +877,62 @@
                           
                           if (acceptResult.success) {
                             logToConsole(`Row ${i + 1}: Successfully accepted quantity ${quantity} for Location ${locationId}`, 'success');
-                            successCount++;
+                            
+                            // Fifth API call: Persist Count Details
+                            logToConsole(`\n=== Row ${i + 1} - Persisting Count Details ===`, 'info');
+                            logToConsole(`API Call: persistCountDetails`, 'info');
+                            logToConsole(`Endpoint: /inventory-management/api/inventory-management/count/quantity/persistCountDetails`, 'info');
+                            
+                            const persistPayload = {
+                              "LocationId": locationId,
+                              "CountRunId": countRunId,
+                              "Quantity": quantity ? parseFloat(quantity) : 0,
+                              "TaskId": taskId,
+                              "ContainerId": null,
+                              "ContainerType": "LOCATION",
+                              "TransactionId": "Cycle Count Active",
+                              "BlindIlpn": false,
+                              "CriteriaId": "CycleCountActiveDeferred",
+                              "ItemAttributeDTO": {
+                                "Item": itemId,
+                                "CompareAttributes": false
+                              },
+                              "TaskIntegrationDTO": {
+                                "TransactionId": "Cycle Count Active",
+                                "TransactionTypeId": "Cycle Count",
+                                "LaborActivityId": "Cycle Count"
+                              }
+                            };
+                            
+                            logToConsole(`Request Payload:`, 'info');
+                            logToConsole(JSON.stringify(persistPayload, null, 2), 'info');
+                            
+                            try {
+                              const persistResult = await apiCall('persistCountDetails', {
+                                org: sessionOrg,
+                                token: sessionToken,
+                                payload: persistPayload
+                              });
+                              
+                              // Log full response
+                              logToConsole(`Response:`, persistResult.success ? 'success' : 'error');
+                              logToConsole(JSON.stringify(persistResult, null, 2), persistResult.success ? 'success' : 'error');
+                              
+                              if (persistResult.success) {
+                                logToConsole(`Row ${i + 1}: Successfully persisted count details for Location ${locationId}`, 'success');
+                                successCount++;
+                              } else {
+                                failCount++;
+                                const errorMsg = persistResult.error || 'Failed to persist count details';
+                                errors.push(`Row ${i + 1} (${locationId}): ${errorMsg}`);
+                                logToConsole(`Row ${i + 1}: Failed to persist count details for Location ${locationId}: ${errorMsg}`, 'error');
+                              }
+                            } catch (error) {
+                              failCount++;
+                              const errorMsg = error.message || 'Exception occurred while persisting count details';
+                              errors.push(`Row ${i + 1} (${locationId}): ${errorMsg}`);
+                              logToConsole(`Row ${i + 1}: Error persisting count details - ${errorMsg}`, 'error');
+                            }
                           } else {
                             failCount++;
                             const errorMsg = acceptResult.error || 'Failed to accept quantity';
