@@ -224,9 +224,18 @@ def accept_quantity():
         location_id = payload.get('LocationId', 'unknown')
         quantity = payload.get('Quantity', 'unknown')
         item_id = payload.get('ItemAttributeDTO', {}).get('Item', 'unknown')
-        print(f"[ACCEPT_QUANTITY] Success for Location: {location_id}, Quantity: {quantity}, Item: {item_id}")
+        
+        # Check the actual API response success field (may be false even with 200 status)
+        api_success = response_data.get('success', True) if isinstance(response_data, dict) else True
+        
+        # If API says success=false, we still return it but let frontend check for warnings
+        if api_success:
+            print(f"[ACCEPT_QUANTITY] Success for Location: {location_id}, Quantity: {quantity}, Item: {item_id}")
+        else:
+            print(f"[ACCEPT_QUANTITY] API returned success=false for Location: {location_id}, Quantity: {quantity}, Item: {item_id}")
+        
         return jsonify({
-            "success": True,
+            "success": api_success,
             "response": response_data
         })
         

@@ -631,6 +631,29 @@
       return { rows: parsedRows, headerRow: headerRow };
     }
     
+    // Function to check if acceptQuantity response has a WARNING about quantity mismatch
+    function hasQuantityMismatchWarning(response) {
+      if (!response || !response.response) {
+        return false;
+      }
+      
+      const resp = response.response;
+      
+      // Check if messages exist and Message array is present
+      if (resp.messages && resp.messages.Message && Array.isArray(resp.messages.Message)) {
+        // Look for WARNING type messages about quantity mismatch
+        const warningMessages = resp.messages.Message.filter(msg => {
+          const type = msg.Type || msg.type || '';
+          const description = (msg.Description || msg.description || '').toLowerCase();
+          return type.toUpperCase() === 'WARNING' && description.includes('quantity mismatch');
+        });
+        
+        return warningMessages.length > 0;
+      }
+      
+      return false;
+    }
+    
     // Function to update preview edit status indicator
     function updatePreviewEditStatus() {
       const statusEl = document.getElementById('previewEditStatus');
@@ -975,8 +998,16 @@
                           logToConsole(`Response:`, acceptResult.success ? 'success' : 'error');
                           logToConsole(JSON.stringify(acceptResult, null, 2), acceptResult.success ? 'success' : 'error');
                           
-                          if (acceptResult.success) {
-                            logToConsole(`Row ${i + 1}: Successfully accepted quantity ${quantity} for Location ${locationId}`, 'success');
+                          // Check if success or if it's a WARNING about quantity mismatch (which should be treated as success)
+                          const isSuccess = acceptResult.success || hasQuantityMismatchWarning(acceptResult);
+                          
+                          if (isSuccess) {
+                            if (acceptResult.success) {
+                              logToConsole(`Row ${i + 1}: Successfully accepted quantity ${quantity} for Location ${locationId}`, 'success');
+                            } else {
+                              // It's a warning, but we're treating it as success
+                              logToConsole(`Row ${i + 1}: Accepted quantity ${quantity} for Location ${locationId} (with quantity mismatch warning)`, 'warning');
+                            }
                             
                             // Fifth API call: Persist Count Details
                             // Fifth API call: Persist Count Details
@@ -1083,6 +1114,18 @@
                               logToConsole(`Row ${i + 1}: Error persisting count details - ${errorMsg}`, 'error');
                             }
                           } else {
+                            // Not success and no quantity mismatch warning - treat as failure
+                            // Check if there are any ERROR type messages
+                            const hasError = acceptResult.response && 
+                                           acceptResult.response.messages && 
+                                           acceptResult.response.messages.Message && 
+                                           Array.isArray(acceptResult.response.messages.Message) &&
+                                           acceptResult.response.messages.Message.some(msg => {
+                                             const type = msg.Type || msg.type || '';
+                                             return type.toUpperCase() === 'ERROR';
+                                           });
+                            
+                            // If there's an ERROR or no warning found, it's a real failure
                             failCount++;
                             const errorMsg = acceptResult.error || 'Failed to accept quantity';
                             errors.push(`Row ${i + 1} (${locationId}): ${errorMsg}`);
