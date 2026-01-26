@@ -289,8 +289,9 @@
         
         <!-- File Preview Window -->
         <div id="filePreviewSection" style="display: none; margin-top: 1rem;">
-          <label class="form-label" style="font-size: 0.9em; margin-bottom: 0.5rem;">File Preview:</label>
-          <div id="filePreview" style="background: var(--input-bg); border: 1px solid var(--border); border-radius: 8px; padding: 0.5rem; height: 168px; overflow-y: auto; font-family: 'Courier New', monospace; font-size: 0.85em; white-space: pre; word-wrap: break-word; color: var(--text); line-height: 1.4;"></div>
+          <label class="form-label" style="font-size: 0.9em; margin-bottom: 0.5rem;">File Preview (Editable):</label>
+          <textarea id="filePreview" style="background: var(--input-bg); border: 1px solid var(--border); border-radius: 8px; padding: 0.5rem; height: 168px; overflow-y: auto; font-family: 'Courier New', monospace; font-size: 0.85em; white-space: pre; word-wrap: break-word; color: var(--text); line-height: 1.4; width: 100%; resize: vertical; box-sizing: border-box;"></textarea>
+          <small class="text-muted" id="previewEditStatus" style="display: none; color: var(--text-muted); font-size: 0.8em; margin-top: 0.25rem;">Changes detected - will use edited data</small>
         </div>
         
         <!-- Upload Button -->
@@ -360,6 +361,8 @@
     // Cycle Count file data
     let cycleCountFileData = null; // Store parsed cycle count file data
     let cycleCountFileHeader = null; // Store cycle count file header row
+    let originalPreviewText = null; // Store original preview text to detect changes
+    let previewHasChanges = false; // Track if preview has been edited
     
     // File section elements
     const cycleCountFileInput = document.getElementById('cycle_count_file');
@@ -554,12 +557,15 @@
       return { rows, headerDetected, headerRow };
     }
     
-    // Function to update file preview window (shows 5 rows max with scrollbar)
+    // Function to update file preview window (editable textarea)
     function updateFilePreview(rows, headerRow = null) {
       if (!filePreview || !filePreviewSection) return;
       
       if (!rows || rows.length === 0) {
         filePreviewSection.style.display = 'none';
+        originalPreviewText = null;
+        previewHasChanges = false;
+        updatePreviewEditStatus();
         return;
       }
       
@@ -580,7 +586,91 @@
         previewText += rowStr + '\n';
       });
       
-      filePreview.textContent = previewText;
+      // Store original text and update textarea
+      originalPreviewText = previewText;
+      filePreview.value = previewText;
+      previewHasChanges = false;
+      updatePreviewEditStatus();
+    }
+    
+    // Function to parse edited preview text back into rows
+    function parsePreviewText(previewText, hasHeader = false) {
+      if (!previewText || !previewText.trim()) {
+        return { rows: [], headerRow: null };
+      }
+      
+      const lines = previewText.split(/\r?\n/).filter(line => line.trim().length > 0);
+      let headerRow = null;
+      let dataRows = [];
+      
+      if (hasHeader && lines.length > 0) {
+        // First line is header, second might be separator
+        const firstLine = lines[0].trim();
+        // Split header by 2+ spaces or tabs (same as data rows)
+        const firstLineParts = firstLine.split(/\s{2,}|\t+/).filter(cell => cell.length > 0);
+        if (firstLineParts.length > 0 && isLocationHeaderRow(firstLineParts[0])) {
+          headerRow = firstLineParts;
+          // Skip separator line if present
+          let startIdx = 1;
+          if (lines.length > 1 && lines[1].match(/^─+$/)) {
+            startIdx = 2;
+          }
+          dataRows = lines.slice(startIdx);
+        } else {
+          dataRows = lines;
+        }
+      } else {
+        dataRows = lines;
+      }
+      
+      // Parse each data row (split by 2+ spaces or tabs)
+      const parsedRows = dataRows.map(line => {
+        return line.trim().split(/\s{2,}|\t+/).filter(cell => cell.length > 0);
+      }).filter(row => row.length > 0);
+      
+      return { rows: parsedRows, headerRow: headerRow };
+    }
+    
+    // Function to update preview edit status indicator
+    function updatePreviewEditStatus() {
+      const statusEl = document.getElementById('previewEditStatus');
+      if (statusEl) {
+        if (previewHasChanges && originalPreviewText !== null) {
+          statusEl.style.display = 'block';
+        } else {
+          statusEl.style.display = 'none';
+        }
+      }
+      
+      // Update upload button text if changes detected
+      if (previewHasChanges && filePreview && filePreview.value) {
+        const parsed = parsePreviewText(filePreview.value, cycleCountFileHeader !== null);
+        const editedRowCount = parsed.rows.length;
+        const uploadBtn = document.getElementById('uploadCycleCountsBtn');
+        if (uploadBtn && editedRowCount > 0) {
+          uploadBtn.textContent = `Upload ${editedRowCount} Cycle Count${editedRowCount === 1 ? '' : 's'} (Edited)`;
+        }
+      } else {
+        // Reset to original count
+        const uploadBtn = document.getElementById('uploadCycleCountsBtn');
+        if (uploadBtn && cycleCountFileData && cycleCountFileData.length > 0) {
+          const rowCount = cycleCountFileData.length;
+          uploadBtn.textContent = `Upload ${rowCount} Cycle Count${rowCount === 1 ? '' : 's'}`;
+        }
+      }
+    }
+    
+    // Function to check if preview has been edited
+    function checkPreviewChanges() {
+      if (!filePreview || !originalPreviewText) {
+        previewHasChanges = false;
+        return false;
+      }
+      
+      const currentText = filePreview.value;
+      previewHasChanges = currentText !== originalPreviewText;
+      updatePreviewEditStatus();
+      return previewHasChanges;
     }
     
     // Function to print file contents to console (including header if present)
@@ -649,7 +739,17 @@
     
     // Upload Cycle Counts function
     async function uploadCycleCounts() {
-      if (!cycleCountFileData || cycleCountFileData.length === 0) {
+      // Check if preview has been edited and use edited data if so
+      let dataToUpload = cycleCountFileData;
+      let headerToUse = cycleCountFileHeader;
+      
+      if (checkPreviewChanges() && filePreview && filePreview.value) {
+        // Parse edited preview text
+        const parsed = parsePreviewText(filePreview.value, cycleCountFileHeader !== null);
+        dataToUpload = parsed.rows;
+        headerToUse = parsed.headerRow || cycleCountFileHeader;
+        logToConsole(`Using edited preview data (${dataToUpload.length} rows)`, 'info');
+      } else if (!cycleCountFileData || cycleCountFileData.length === 0) {
         alert('Please load a cycle count file first.');
         return;
       }
@@ -681,11 +781,11 @@
       const errors = [];
       
       logToConsole(`\n=== Starting Cycle Count Upload ===`, 'info');
-      logToConsole(`Total rows to process: ${cycleCountFileData.length}`, 'info');
+      logToConsole(`Total rows to process: ${dataToUpload.length}`, 'info');
       
       // Process each row sequentially
-      for (let i = 0; i < cycleCountFileData.length; i++) {
-        const row = cycleCountFileData[i];
+      for (let i = 0; i < dataToUpload.length; i++) {
+        const row = dataToUpload[i];
         const locationId = row && row.length > 0 ? String(row[0]).trim() : '';
         const quantity = row && row.length > 1 ? String(row[1]).trim() : '';
         
@@ -1441,6 +1541,19 @@
             const errorMsg = error.message || 'Failed to parse file. Please ensure the file is a valid CSV, Excel, or TXT file.';
             alert(`Error loading file: ${errorMsg}`);
           }
+        });
+      }
+      
+      // File Preview change detection
+      if (filePreview) {
+        filePreview.addEventListener('input', () => {
+          checkPreviewChanges();
+        });
+        filePreview.addEventListener('paste', () => {
+          // Use setTimeout to check after paste completes
+          setTimeout(() => {
+            checkPreviewChanges();
+          }, 10);
         });
       }
       
