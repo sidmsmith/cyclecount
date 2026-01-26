@@ -633,25 +633,62 @@
     
     // Function to check if acceptQuantity response has a WARNING about quantity mismatch
     function hasQuantityMismatchWarning(response) {
-      if (!response || !response.response) {
+      logToConsole(`\n[DEBUG] Checking for quantity mismatch warning...`, 'info');
+      logToConsole(`[DEBUG] Response object exists: ${!!response}`, 'info');
+      
+      if (!response) {
+        logToConsole(`[DEBUG] No response object`, 'error');
+        return false;
+      }
+      
+      if (!response.response) {
+        logToConsole(`[DEBUG] No response.response field`, 'error');
+        logToConsole(`[DEBUG] Response keys: ${Object.keys(response).join(', ')}`, 'info');
         return false;
       }
       
       const resp = response.response;
+      logToConsole(`[DEBUG] Response.response exists`, 'info');
+      logToConsole(`[DEBUG] Response.response keys: ${Object.keys(resp).join(', ')}`, 'info');
       
       // Check if messages exist and Message array is present
-      if (resp.messages && resp.messages.Message && Array.isArray(resp.messages.Message)) {
-        // Look for WARNING type messages about quantity mismatch
-        const warningMessages = resp.messages.Message.filter(msg => {
-          const type = msg.Type || msg.type || '';
-          const description = (msg.Description || msg.description || '').toLowerCase();
-          return type.toUpperCase() === 'WARNING' && description.includes('quantity mismatch');
-        });
-        
-        return warningMessages.length > 0;
+      if (!resp.messages) {
+        logToConsole(`[DEBUG] No messages field in response`, 'error');
+        return false;
       }
       
-      return false;
+      logToConsole(`[DEBUG] messages field exists`, 'info');
+      logToConsole(`[DEBUG] messages keys: ${Object.keys(resp.messages).join(', ')}`, 'info');
+      
+      if (!resp.messages.Message) {
+        logToConsole(`[DEBUG] No messages.Message field`, 'error');
+        return false;
+      }
+      
+      logToConsole(`[DEBUG] messages.Message exists`, 'info');
+      logToConsole(`[DEBUG] messages.Message is array: ${Array.isArray(resp.messages.Message)}`, 'info');
+      
+      if (!Array.isArray(resp.messages.Message)) {
+        logToConsole(`[DEBUG] messages.Message is not an array`, 'error');
+        return false;
+      }
+      
+      logToConsole(`[DEBUG] messages.Message array length: ${resp.messages.Message.length}`, 'info');
+      
+      // Look for WARNING type messages about quantity mismatch
+      const warningMessages = resp.messages.Message.filter(msg => {
+        const type = msg.Type || msg.type || '';
+        const description = (msg.Description || msg.description || '').toLowerCase();
+        logToConsole(`[DEBUG] Checking message - Type: "${type}", Description: "${description}"`, 'info');
+        const isWarning = type.toUpperCase() === 'WARNING';
+        const hasMismatch = description.includes('quantity mismatch');
+        logToConsole(`[DEBUG]   - Is WARNING: ${isWarning}, Has quantity mismatch: ${hasMismatch}`, 'info');
+        return isWarning && hasMismatch;
+      });
+      
+      logToConsole(`[DEBUG] Found ${warningMessages.length} warning message(s) about quantity mismatch`, warningMessages.length > 0 ? 'warning' : 'info');
+      
+      return warningMessages.length > 0;
     }
     
     // Function to update preview edit status indicator
@@ -994,12 +1031,18 @@
                             payload: acceptPayload
                           });
                           
-                          // Log full response
-                          logToConsole(`Response:`, acceptResult.success ? 'success' : 'error');
-                          logToConsole(JSON.stringify(acceptResult, null, 2), acceptResult.success ? 'success' : 'error');
+                          // Log full response (always log complete response for debugging)
+                          logToConsole(`\n=== Full acceptQuantity Response ===`, 'info');
+                          logToConsole(JSON.stringify(acceptResult, null, 2), 'info');
+                          logToConsole(`Response success field: ${acceptResult.success}`, acceptResult.success ? 'success' : 'error');
+                          
+                          // Debug: Check for warning
+                          const hasWarning = hasQuantityMismatchWarning(acceptResult);
+                          logToConsole(`Has quantity mismatch warning: ${hasWarning}`, hasWarning ? 'warning' : 'info');
                           
                           // Check if success or if it's a WARNING about quantity mismatch (which should be treated as success)
-                          const isSuccess = acceptResult.success || hasQuantityMismatchWarning(acceptResult);
+                          const isSuccess = acceptResult.success || hasWarning;
+                          logToConsole(`Final isSuccess determination: ${isSuccess}`, isSuccess ? 'success' : 'error');
                           
                           if (isSuccess) {
                             if (acceptResult.success) {

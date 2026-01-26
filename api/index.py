@@ -207,32 +207,37 @@ def accept_quantity():
     try:
         r = requests.post(url, json=payload, headers=headers, timeout=60, verify=False)
         
-        if r.status_code not in (200, 201):
-            error_msg = f"API {r.status_code}: {r.text[:500]}"
-            print(f"[ACCEPT_QUANTITY] Error: {error_msg}")
-            return jsonify({
-                "success": False,
-                "error": error_msg,
-                "response": r.text[:500] if r.text else None
-            })
-        
+        # Try to parse JSON response regardless of status code (API may return 400 with warning messages)
         try:
             response_data = r.json()
         except:
-            response_data = {"raw_response": r.text[:500]}
+            # If JSON parsing fails, handle based on status code
+            if r.status_code not in (200, 201):
+                error_msg = f"API {r.status_code}: {r.text[:500]}"
+                print(f"[ACCEPT_QUANTITY] Error: {error_msg}")
+                return jsonify({
+                    "success": False,
+                    "error": error_msg,
+                    "response": r.text[:500] if r.text else None
+                })
+            else:
+                response_data = {"raw_response": r.text[:500]}
         
         location_id = payload.get('LocationId', 'unknown')
         quantity = payload.get('Quantity', 'unknown')
         item_id = payload.get('ItemAttributeDTO', {}).get('Item', 'unknown')
         
-        # Check the actual API response success field (may be false even with 200 status)
+        # Check the actual API response success field (may be false even with 200/400 status)
         api_success = response_data.get('success', True) if isinstance(response_data, dict) else True
         
         # If API says success=false, we still return it but let frontend check for warnings
+        # Even if status code is 400, we return the full response so frontend can check for warnings
         if api_success:
             print(f"[ACCEPT_QUANTITY] Success for Location: {location_id}, Quantity: {quantity}, Item: {item_id}")
         else:
             print(f"[ACCEPT_QUANTITY] API returned success=false for Location: {location_id}, Quantity: {quantity}, Item: {item_id}")
+            if r.status_code not in (200, 201):
+                print(f"[ACCEPT_QUANTITY] Status code: {r.status_code} (may contain warning messages)")
         
         return jsonify({
             "success": api_success,
