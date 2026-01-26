@@ -281,7 +281,7 @@
         <div style="display: flex; gap: 0.5rem; align-items: center;">
           <div style="flex: 1; position: relative;">
             <input type="file" id="cycle_count_file" class="form-control" accept=".csv,.xls,.xlsx,.txt" style="display:none;" />
-            <input type="text" id="cycle_count_file_display" class="form-control" placeholder="Load a CSV/Excel/TXT file" style="padding-right: 200px; text-overflow: ellipsis; overflow: hidden; white-space: nowrap; background-color: rgba(255, 0, 0, 0.1); border-color: rgba(255, 0, 0, 0.3);" readonly />
+            <input type="text" id="cycle_count_file_display" class="form-control" placeholder="Load a CSV/Excel/TXT file" style="padding-right: 200px; text-overflow: ellipsis; overflow: hidden; white-space: nowrap; background-color: rgba(255, 0, 0, 0.1); border-color: rgba(255, 0, 0, 0.3); color: #ffffff;" readonly />
             <span id="cycleCountFileStatus" style="position: absolute; right: 8px; top: 50%; transform: translateY(-50%); color: var(--success); font-size: 0.85em; pointer-events: none; white-space: nowrap;"></span>
           </div>
           <button class="btn btn-secondary btn-sm" id="cycleCountFileLoadBtn" type="button">Load</button>
@@ -290,7 +290,7 @@
         <!-- File Preview Window -->
         <div id="filePreviewSection" style="display: none; margin-top: 1rem;">
           <label class="form-label" style="font-size: 0.9em; margin-bottom: 0.5rem;">File Preview (Editable):</label>
-          <textarea id="filePreview" style="background: var(--input-bg); border: 1px solid var(--border); border-radius: 8px; padding: 0.5rem; height: 168px; overflow-y: auto; font-family: 'Courier New', monospace; font-size: 0.85em; white-space: pre; word-wrap: break-word; color: var(--text); line-height: 1.4; width: 100%; resize: vertical; box-sizing: border-box;"></textarea>
+          <textarea id="filePreview" style="background: var(--input-bg); border: 1px solid var(--border); border-radius: 8px; padding: 0.5rem; height: 168px; overflow-y: auto; font-family: 'Courier New', monospace; font-size: 0.85em; white-space: pre; word-wrap: break-word; color: #ffffff; line-height: 1.4; width: 100%; resize: vertical; box-sizing: border-box;"></textarea>
           <small class="text-muted" id="previewEditStatus" style="display: none; color: var(--text-muted); font-size: 0.8em; margin-top: 0.25rem;">Changes detected - will use edited data</small>
         </div>
         
@@ -1246,8 +1246,10 @@
       // Update UI
       if (uploadBtn) {
         uploadBtn.disabled = false;
-        // Reset button text based on file data
-        if (cycleCountFileData && cycleCountFileData.length > 0) {
+        // Update button text to reflect actual upload results
+        if (successCount > 0) {
+          uploadBtn.textContent = `Upload ${successCount} Cycle Count${successCount === 1 ? '' : 's'}`;
+        } else if (cycleCountFileData && cycleCountFileData.length > 0) {
           const rowCount = cycleCountFileData.length;
           uploadBtn.textContent = `Upload ${rowCount} Cycle Count${rowCount === 1 ? '' : 's'}`;
         } else {
@@ -1258,10 +1260,10 @@
         if (failCount === 0) {
           const countText = successCount === 1 ? 'cycle count' : 'cycle counts';
           uploadStatus.textContent = `✓ Successfully uploaded ${successCount} ${countText}`;
-          uploadStatus.style.color = 'var(--success)';
+          uploadStatus.style.color = '#ffffff'; // White color
         } else {
           uploadStatus.textContent = `${successCount} succeeded, ${failCount} failed`;
-          uploadStatus.style.color = 'var(--red-text)';
+          uploadStatus.style.color = '#ffffff'; // White color
         }
       }
     }
