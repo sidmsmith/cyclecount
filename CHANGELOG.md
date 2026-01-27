@@ -2,6 +2,29 @@
 
 All notable changes to the Cycle Count application will be documented in this file.
 
+## [1.3.0] - 2026-01-26
+
+### Added
+- **Upload Progress Bar**: Added real-time progress bar directly under the Upload button that displays:
+  - Current processing status (e.g., "Processing 3/10 rows...")
+  - Percentage completion (0% to 100%)
+  - Estimated time remaining (e.g., "~2m 30s remaining")
+  - Visual progress bar with smooth animations
+  - Final completion status showing success/failure counts
+  - Auto-hides 2 seconds after completion
+
+### Changed
+- **UI Text Colors**: Enhanced text color enforcement for better visibility:
+  - "Changes detected - will use edited data" message now displays in white
+  - "Successfully uploaded..." status message now displays in white
+  - Used `!important` CSS flags and specific ID selectors to override Bootstrap classes
+
+### Technical Details
+- Progress bar updates after each row completes (success or failure)
+- Tracks processing time per row to calculate accurate time estimates
+- Progress bar styled to match Item Generator app's Cloudinary upload progress bar
+- Uses CSS transitions for smooth progress bar animations
+
 ## [1.2.0] - 2026-01-26
 
 ### Added
