@@ -2,6 +2,17 @@
 
 All notable changes to the Cycle Count application will be documented in this file.
 
+## [1.2.0] - 2026-01-26
+
+### Added
+- **Console Visibility Control**: Added URL parameter support for controlling console button and window visibility
+  - `Console=Y`: Shows console window on page load (button remains visible)
+  - `Console=N`: Hides both console button and window completely
+  - No Console parameter: Default behavior - button visible, console hidden (user can toggle)
+
+### Changed
+- **Console Display Logic**: Enhanced console visibility handling to support cross-app integration scenarios
+
 ## [1.1.0] - 2026-01-26
 
 ### Added
