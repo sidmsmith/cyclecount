@@ -300,6 +300,22 @@
             <button class="btn btn-success" id="uploadCycleCountsBtn" type="button">Upload Cycle Counts</button>
             <div id="uploadStatus" class="text-muted" style="font-size: 0.9em; margin-top: 0.5rem; color: #ffffff;"></div>
           </div>
+          
+          <!-- Upload Progress Bar -->
+          <div id="uploadProgressContainer" style="display: none; margin-top: 1rem;">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.5rem;">
+              <div style="font-size: 0.9em; color: #ffffff;">
+                <span id="uploadProgressText">Processing...</span>
+                <span id="uploadTimeRemaining" style="margin-left: 1rem; color: #999;"></span>
+              </div>
+              <div style="font-size: 0.9em; color: #ffffff;">
+                <span id="uploadProgressPercent">0%</span>
+              </div>
+            </div>
+            <div style="width: 100%; height: 8px; background: var(--input-bg); border-radius: 4px; overflow: hidden;">
+              <div id="uploadProgressBar" style="height: 100%; background: var(--success); width: 0%; transition: width 0.3s ease;"></div>
+            </div>
+          </div>
         </div>
       </div>
 
@@ -840,11 +856,54 @@
       let failCount = 0;
       const errors = [];
       
+      // Progress bar elements
+      const progressContainer = document.getElementById('uploadProgressContainer');
+      const progressBar = document.getElementById('uploadProgressBar');
+      const progressText = document.getElementById('uploadProgressText');
+      const progressPercent = document.getElementById('uploadProgressPercent');
+      const timeRemaining = document.getElementById('uploadTimeRemaining');
+      
+      // Show progress bar
+      if (progressContainer) progressContainer.style.display = 'block';
+      if (progressBar) progressBar.style.width = '0%';
+      if (progressText) progressText.textContent = `Processing 0/${dataToUpload.length} rows...`;
+      if (progressPercent) progressPercent.textContent = '0%';
+      if (timeRemaining) timeRemaining.textContent = '';
+      
+      // Track processing times for time estimation
+      let processingTimes = [];
+      const uploadStartTime = Date.now();
+      
+      // Helper function to update progress
+      function updateProgress(index, total, duration) {
+        const percent = Math.round((index / total) * 100);
+        if (progressBar) progressBar.style.width = percent + '%';
+        if (progressPercent) progressPercent.textContent = percent + '%';
+        if (progressText) progressText.textContent = `Processing ${index}/${total} rows...`;
+        
+        // Calculate estimated time remaining
+        if (processingTimes.length > 0 && index < total) {
+          const avgTime = processingTimes.reduce((a, b) => a + b, 0) / processingTimes.length;
+          const remaining = total - index;
+          const estimatedSeconds = Math.round(avgTime * remaining);
+          if (timeRemaining) {
+            if (estimatedSeconds < 60) {
+              timeRemaining.textContent = `~${estimatedSeconds}s remaining`;
+            } else {
+              const minutes = Math.floor(estimatedSeconds / 60);
+              const seconds = estimatedSeconds % 60;
+              timeRemaining.textContent = `~${minutes}m ${seconds}s remaining`;
+            }
+          }
+        }
+      }
+      
       logToConsole(`\n=== Starting Cycle Count Upload ===`, 'info');
       logToConsole(`Total rows to process: ${dataToUpload.length}`, 'info');
       
       // Process each row sequentially
       for (let i = 0; i < dataToUpload.length; i++) {
+        const rowStartTime = Date.now();
         const row = dataToUpload[i];
         const locationId = row && row.length > 0 ? String(row[0]).trim() : '';
         const quantity = row && row.length > 1 ? String(row[1]).trim() : '';
@@ -853,6 +912,11 @@
           logToConsole(`Row ${i + 1}: Skipped - missing LocationId`, 'warning');
           failCount++;
           errors.push(`Row ${i + 1}: Missing LocationId`);
+          // Update progress for skipped row
+          const rowEndTime = Date.now();
+          const rowDuration = (rowEndTime - rowStartTime) / 1000;
+          processingTimes.push(rowDuration);
+          updateProgress(i + 1, dataToUpload.length, rowDuration);
           continue;
         }
         
@@ -1138,23 +1202,44 @@
                                     errors.push(`Row ${i + 1} (${locationId}): ${errorMsg}`);
                                     logToConsole(`Row ${i + 1}: Failed to end count for Location ${locationId}: ${errorMsg}`, 'error');
                                   }
+                                  
+                                  // Update progress after row completion
+                                  const rowEndTime = Date.now();
+                                  const rowDuration = (rowEndTime - rowStartTime) / 1000;
+                                  processingTimes.push(rowDuration);
+                                  updateProgress(i + 1, dataToUpload.length, rowDuration);
                                 } catch (error) {
                                   failCount++;
                                   const errorMsg = error.message || 'Exception occurred while ending count';
                                   errors.push(`Row ${i + 1} (${locationId}): ${errorMsg}`);
                                   logToConsole(`Row ${i + 1}: Error ending count - ${errorMsg}`, 'error');
+                                  // Update progress after row completion (error)
+                                  const rowEndTime = Date.now();
+                                  const rowDuration = (rowEndTime - rowStartTime) / 1000;
+                                  processingTimes.push(rowDuration);
+                                  updateProgress(i + 1, dataToUpload.length, rowDuration);
                                 }
                               } else {
                                 failCount++;
                                 const errorMsg = persistResult.error || 'Failed to persist count details';
                                 errors.push(`Row ${i + 1} (${locationId}): ${errorMsg}`);
                                 logToConsole(`Row ${i + 1}: Failed to persist count details for Location ${locationId}: ${errorMsg}`, 'error');
+                                // Update progress after row completion (error)
+                                const rowEndTime = Date.now();
+                                const rowDuration = (rowEndTime - rowStartTime) / 1000;
+                                processingTimes.push(rowDuration);
+                                updateProgress(i + 1, dataToUpload.length, rowDuration);
                               }
                             } catch (error) {
                               failCount++;
                               const errorMsg = error.message || 'Exception occurred while persisting count details';
                               errors.push(`Row ${i + 1} (${locationId}): ${errorMsg}`);
                               logToConsole(`Row ${i + 1}: Error persisting count details - ${errorMsg}`, 'error');
+                              // Update progress after row completion (error)
+                              const rowEndTime = Date.now();
+                              const rowDuration = (rowEndTime - rowStartTime) / 1000;
+                              processingTimes.push(rowDuration);
+                              updateProgress(i + 1, dataToUpload.length, rowDuration);
                             }
                           } else {
                             // Not success and no quantity mismatch warning - treat as failure
@@ -1173,12 +1258,22 @@
                             const errorMsg = acceptResult.error || 'Failed to accept quantity';
                             errors.push(`Row ${i + 1} (${locationId}): ${errorMsg}`);
                             logToConsole(`Row ${i + 1}: Failed to accept quantity for Location ${locationId}: ${errorMsg}`, 'error');
+                            // Update progress after row completion (error)
+                            const rowEndTime = Date.now();
+                            const rowDuration = (rowEndTime - rowStartTime) / 1000;
+                            processingTimes.push(rowDuration);
+                            updateProgress(i + 1, dataToUpload.length, rowDuration);
                           }
                         } catch (error) {
                           failCount++;
                           const errorMsg = error.message || 'Exception occurred while accepting quantity';
                           errors.push(`Row ${i + 1} (${locationId}): ${errorMsg}`);
                           logToConsole(`Row ${i + 1}: Error accepting quantity - ${errorMsg}`, 'error');
+                          // Update progress after row completion (error)
+                          const rowEndTime = Date.now();
+                          const rowDuration = (rowEndTime - rowStartTime) / 1000;
+                          processingTimes.push(rowDuration);
+                          updateProgress(i + 1, dataToUpload.length, rowDuration);
                         }
                       } else {
                         failCount++;
@@ -1188,48 +1283,88 @@
                         const errorMsg = `Missing required fields: ${missingFields.join(', ')}`;
                         errors.push(`Row ${i + 1} (${locationId}): ${errorMsg}`);
                         logToConsole(`Row ${i + 1}: Cannot proceed - ${errorMsg}`, 'error');
+                        // Update progress after row completion (error)
+                        const rowEndTime = Date.now();
+                        const rowDuration = (rowEndTime - rowStartTime) / 1000;
+                        processingTimes.push(rowDuration);
+                        updateProgress(i + 1, dataToUpload.length, rowDuration);
                       }
                     } else {
                       failCount++;
                       const errorMsg = validateResult.error || 'Failed to validate item';
                       errors.push(`Row ${i + 1} (${locationId}): ${errorMsg}`);
                       logToConsole(`Row ${i + 1}: Failed to validate item for Location ${locationId}: ${errorMsg}`, 'error');
+                      // Update progress after row completion (error)
+                      const rowEndTime = Date.now();
+                      const rowDuration = (rowEndTime - rowStartTime) / 1000;
+                      processingTimes.push(rowDuration);
+                      updateProgress(i + 1, dataToUpload.length, rowDuration);
                     }
                   } catch (error) {
                     failCount++;
                     const errorMsg = error.message || 'Exception occurred while validating item';
                     errors.push(`Row ${i + 1} (${locationId}): ${errorMsg}`);
                     logToConsole(`Row ${i + 1}: Error validating item - ${errorMsg}`, 'error');
+                    // Update progress after row completion (error)
+                    const rowEndTime = Date.now();
+                    const rowDuration = (rowEndTime - rowStartTime) / 1000;
+                    processingTimes.push(rowDuration);
+                    updateProgress(i + 1, dataToUpload.length, rowDuration);
                   }
                 } else {
                   failCount++;
                   const errorMsg = 'CountRunId not found in initiateCount response';
                   errors.push(`Row ${i + 1} (${locationId}): ${errorMsg}`);
                   logToConsole(`Row ${i + 1}: Cannot proceed - ${errorMsg}`, 'error');
+                  // Update progress after row completion (error)
+                  const rowEndTime = Date.now();
+                  const rowDuration = (rowEndTime - rowStartTime) / 1000;
+                  processingTimes.push(rowDuration);
+                  updateProgress(i + 1, dataToUpload.length, rowDuration);
                 }
               } else {
                 failCount++;
                 const errorMsg = inventoryResult.error || 'Failed to get ItemId';
                 errors.push(`Row ${i + 1} (${locationId}): ${errorMsg}`);
                 logToConsole(`Row ${i + 1}: Failed to get ItemId for Location ${locationId}: ${errorMsg}`, 'error');
+                // Update progress after row completion (error)
+                const rowEndTime = Date.now();
+                const rowDuration = (rowEndTime - rowStartTime) / 1000;
+                processingTimes.push(rowDuration);
+                updateProgress(i + 1, dataToUpload.length, rowDuration);
               }
             } catch (error) {
               failCount++;
               const errorMsg = error.message || 'Exception occurred while getting ItemId';
               errors.push(`Row ${i + 1} (${locationId}): ${errorMsg}`);
               logToConsole(`Row ${i + 1}: Error getting ItemId - ${errorMsg}`, 'error');
+              // Update progress after row completion (error)
+              const rowEndTime = Date.now();
+              const rowDuration = (rowEndTime - rowStartTime) / 1000;
+              processingTimes.push(rowDuration);
+              updateProgress(i + 1, dataToUpload.length, rowDuration);
             }
           } else {
             failCount++;
             const errorMsg = result.error || 'Unknown error';
             errors.push(`Row ${i + 1} (${locationId}): ${errorMsg}`);
             logToConsole(`Row ${i + 1}: Failed to initiate count for Location ${locationId}: ${errorMsg}`, 'error');
+            // Update progress after row completion (error)
+            const rowEndTime = Date.now();
+            const rowDuration = (rowEndTime - rowStartTime) / 1000;
+            processingTimes.push(rowDuration);
+            updateProgress(i + 1, dataToUpload.length, rowDuration);
           }
         } catch (error) {
           failCount++;
           const errorMsg = error.message || 'Exception occurred';
           errors.push(`Row ${i + 1} (${locationId}): ${errorMsg}`);
           logToConsole(`Row ${i + 1}: Error - ${errorMsg}`, 'error');
+          // Update progress after row completion (error)
+          const rowEndTime = Date.now();
+          const rowDuration = (rowEndTime - rowStartTime) / 1000;
+          processingTimes.push(rowDuration);
+          updateProgress(i + 1, dataToUpload.length, rowDuration);
         }
       }
       
@@ -1266,6 +1401,11 @@
           uploadStatus.style.color = '#ffffff'; // White color
         }
       }
+      
+      // Hide progress bar after a short delay to show completion
+      setTimeout(() => {
+        if (progressContainer) progressContainer.style.display = 'none';
+      }, 2000);
     }
 
     // Update UI based on authentication status
