@@ -1715,13 +1715,28 @@
         });
       }
       
-      // Check for Console parameter and show console if Console=Y
-      if (urlConsole && urlConsole.toUpperCase() === 'Y') {
-        if (consoleSection) {
-          consoleSection.style.display = 'block';
-          logToConsole('Console window opened via URL parameter (Console=Y)', 'info');
+      // Check for Console parameter and handle visibility
+      const consoleToggleContainer = document.getElementById('consoleToggleContainer');
+      if (urlConsole) {
+        const consoleValue = urlConsole.toUpperCase();
+        if (consoleValue === 'Y') {
+          // Console=Y: Show console window (button already visible by default)
+          if (consoleSection) {
+            consoleSection.style.display = 'block';
+            logToConsole('Console window opened via URL parameter (Console=Y)', 'info');
+          }
+        } else if (consoleValue === 'N') {
+          // Console=N: Hide both button and console window
+          if (consoleToggleContainer) {
+            consoleToggleContainer.style.display = 'none';
+          }
+          if (consoleSection) {
+            consoleSection.style.display = 'none';
+          }
         }
+        // If Console parameter exists but is not Y or N, default behavior (button visible, console hidden)
       }
+      // If no Console parameter, default behavior (button visible, console hidden)
     });
   </script>
   <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
