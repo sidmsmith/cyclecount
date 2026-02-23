@@ -708,6 +708,27 @@
       
       return warningMessages.length > 0;
     }
+
+    function hasRecountRequiredError(response) {
+      if (!response || !response.response || !response.response.messages || !response.response.messages.Message) return false;
+      const messages = response.response.messages.Message;
+      if (!Array.isArray(messages)) return false;
+      return messages.some(msg => {
+        const code = (msg.Code || msg.ErrorCode || '').toUpperCase();
+        const type = (msg.Type || msg.type || '').toUpperCase();
+        return code === 'INM::411' && type === 'ERROR';
+      });
+    }
+
+    function sendRecountMessage(locationId) {
+      const user = `demoweb@${sessionOrg.toLowerCase()}`;
+      apiCall('sendMessage', {
+        org: sessionOrg,
+        token: sessionToken,
+        content: `Count issue with Location ${locationId}`,
+        users: [user]
+      }).catch(() => {});
+    }
     
     // Function to update preview edit status indicator
     function updatePreviewEditStatus() {
@@ -1114,8 +1135,11 @@
                             if (acceptResult.success) {
                               logToConsole(`Row ${i + 1}: Successfully accepted quantity ${quantity} for Location ${locationId}`, 'success');
                             } else {
-                              // It's a warning, but we're treating it as success
                               logToConsole(`Row ${i + 1}: Accepted quantity ${quantity} for Location ${locationId} (with quantity mismatch warning)`, 'warning');
+                            }
+
+                            if (hasRecountRequiredError(acceptResult)) {
+                              sendRecountMessage(locationId);
                             }
                             
                             // Fifth API call: Persist Count Details
