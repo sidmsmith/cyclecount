@@ -5,6 +5,7 @@ import sys
 import logging
 import requests
 from requests.auth import HTTPBasicAuth
+from datetime import datetime, timezone
 import urllib3
 
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
@@ -33,6 +34,44 @@ logger.info("Environment check: MANHATTAN_PASSWORD=%s, MANHATTAN_SECRET=%s",
 # Critical: Fail fast if secrets missing
 if not PASSWORD or not CLIENT_SECRET:
     raise Exception("Missing MANHATTAN_PASSWORD or MANHATTAN_SECRET environment variables")
+
+USAGE_INGEST_URL = os.getenv("MANHATTAN_USAGE_INGEST_URL", "").strip()
+USAGE_INGEST_SECRET = os.getenv("MANHATTAN_USAGE_INGEST_SECRET", "").strip()
+APP_NAME = "cycle-count"
+APP_VERSION = "1.3.1"
+
+
+def forward_usage_event(payload):
+    """POST usage JSON to Manhattan app usage dashboard ingest (Neon)."""
+    if not USAGE_INGEST_URL:
+        logger.warning("[usage] MANHATTAN_USAGE_INGEST_URL not set; event not recorded")
+        return
+    headers = {"Content-Type": "application/json"}
+    if USAGE_INGEST_SECRET:
+        headers["Authorization"] = f"Bearer {USAGE_INGEST_SECRET}"
+    try:
+        requests.post(USAGE_INGEST_URL, json=payload, headers=headers, timeout=8)
+    except Exception as e:
+        logger.warning("[usage] Forward failed: %s", e)
+
+
+@app.route('/api/usage-track', methods=['POST'])
+def usage_track():
+    """Receive usage events from the SPA and forward to ingest."""
+    data = request.json or {}
+    event_name = data.get("event_name")
+    metadata = data.get("metadata") or {}
+    if not event_name:
+        return jsonify({"success": True})
+    payload = {
+        "event_name": event_name,
+        "app_name": APP_NAME,
+        "app_version": APP_VERSION,
+        **metadata,
+        "timestamp": datetime.now(timezone.utc).isoformat(),
+    }
+    forward_usage_event(payload)
+    return jsonify({"success": True})
 
 # =============================================================================
 # HELPER FUNCTIONS
