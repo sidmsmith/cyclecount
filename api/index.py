@@ -64,10 +64,10 @@ def usage_track():
     if not event_name:
         return jsonify({"success": True})
     payload = {
+        **metadata,
         "event_name": event_name,
         "app_name": APP_NAME,
         "app_version": APP_VERSION,
-        **metadata,
         "timestamp": datetime.now(timezone.utc).isoformat(),
     }
     forward_usage_event(payload)
